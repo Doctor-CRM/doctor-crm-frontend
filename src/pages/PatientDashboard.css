@@ -1,0 +1,65 @@
+.emergency-call-badge {
+  background: #fef2f2;
+  color: #b91c1c;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #fecaca;
+  font-size: 13px;
+}
+
+.appointments-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.apt-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.apt-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.apt-card-header h4 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 16px;
+}
+
+.speciality {
+  margin: 3px 0 0 0;
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.apt-card-details {
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+}
+
+.detail-item span {
+  color: #64748b;
+}
+
+.detail-item strong {
+  color: #1e293b;
+}

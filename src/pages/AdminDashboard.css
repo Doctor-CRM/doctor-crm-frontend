@@ -1,0 +1,33 @@
+.system-health-badge {
+  background: #f8fafc;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  font-size: 13px;
+  color: #334155;
+}
+
+.filter-controls {
+  display: flex;
+  gap: 12px;
+}
+
+.pill-tag.role-doctor {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.pill-tag.role-patient {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.pill-tag.role-receptionist {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.pill-tag.role-admin {
+  background: #fef3c7;
+  color: #b45309;
+}
