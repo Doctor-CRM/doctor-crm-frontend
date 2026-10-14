@@ -14,12 +14,7 @@ import type {
 } from "../types/admin";
 import logoImg from "../assets/Hospital CRM Healthcare Logo (1).png";
 
-interface AuditLog {
-  id: string;
-  timestamp: string;
-  message: string;
-  type: "info" | "success" | "warning" | "error";
-}
+
 
 const INITIAL_SUMMARY: SummaryMetrics = {
   total_users: 0,
@@ -43,7 +38,7 @@ export const AdminDashboard: React.FC = () => {
   const [usersList, setUsersList] = useState<AdminUser[]>([]);
   const [doctorsList, setDoctorsList] = useState<DoctorProfile[]>([]);
   const [patientsList, setPatientsList] = useState<PatientProfile[]>([]);
-  const [logs, setLogs] = useState<AuditLog[]>([]);
+
 
   // Status & Feedback States
   const [healthStatus, setHealthStatus] = useState<"checking" | "online" | "offline">("checking");
@@ -138,15 +133,7 @@ export const AdminDashboard: React.FC = () => {
   const [editPatAddress, setEditPatAddress] = useState("");
   const [isSavingPatientEdit, setIsSavingPatientEdit] = useState(false);
 
-  const addAuditLog = useCallback((message: string, type: "info" | "success" | "warning" | "error" = "info") => {
-    const newLog: AuditLog = {
-      id: `LOG-${Date.now()}`,
-      timestamp: new Date().toLocaleTimeString(),
-      message,
-      type,
-    };
-    setLogs((prev) => [newLog, ...prev.slice(0, 49)]);
-  }, []);
+
 
   const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
     setToast({ message, type });
@@ -163,14 +150,11 @@ export const AdminDashboard: React.FC = () => {
 
       const isDbConnected = res.db_status === "connected" || !res.db_status;
       setDbHealthStatus(isDbConnected ? "connected" : "disconnected");
-
-      addAuditLog(`Backend & DB Health verified via GET /api/v1/health: Backend (Connected 🚀) | DB (${res.db_message || 'Connected 🟢'})`, "success");
     } catch (err) {
       setHealthStatus("offline");
       setDbHealthStatus("disconnected");
-      addAuditLog(`Backend & DB Health Check failed: ${getApiErrorMessage(err)}`, "error");
     }
-  }, [addAuditLog]);
+  }, []);
 
   // Fetch Users List & Summary Metrics (GET /api/v1/user/data)
   const fetchUsersAndSummary = useCallback(async () => {
@@ -184,16 +168,14 @@ export const AdminDashboard: React.FC = () => {
         if (Array.isArray(res.data.users)) {
           setUsersList(res.data.users);
         }
-        addAuditLog(`Fetched ${res.data.users?.length || 0} users and summary metrics from GET /api/v1/user/data`, "info");
       }
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
       showToast(`Failed to load users from DB: ${errMsg}`, "error");
-      addAuditLog(`Error fetching users: ${errMsg}`, "error");
     } finally {
       setIsLoadingUsers(false);
     }
-  }, [addAuditLog]);
+  }, []);
 
   // Fetch Doctors Data List (GET /api/v1/doctor/data)
   const fetchDoctorProfiles = useCallback(async () => {
@@ -201,15 +183,13 @@ export const AdminDashboard: React.FC = () => {
     try {
       const doctors = await adminService.getDoctorData();
       setDoctorsList(doctors || []);
-      addAuditLog(`Fetched ${doctors?.length || 0} doctor profiles from GET /api/v1/doctor/data`, "info");
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
       showToast(`Failed to load doctor profiles: ${errMsg}`, "error");
-      addAuditLog(`Error fetching doctor profiles: ${errMsg}`, "error");
     } finally {
       setIsLoadingDoctors(false);
     }
-  }, [addAuditLog]);
+  }, []);
 
   // Fetch Patients Data List (GET /api/v1/patient/data)
   const fetchPatientProfiles = useCallback(async () => {
@@ -217,15 +197,13 @@ export const AdminDashboard: React.FC = () => {
     try {
       const patients = await adminService.getPatientData();
       setPatientsList(patients || []);
-      addAuditLog(`Fetched ${patients?.length || 0} patient profiles from GET /api/v1/patient/data`, "info");
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
       showToast(`Failed to load patient profiles: ${errMsg}`, "error");
-      addAuditLog(`Error fetching patient profiles: ${errMsg}`, "error");
     } finally {
       setIsLoadingPatients(false);
     }
-  }, [addAuditLog]);
+  }, []);
 
   // Manual Refresh Handler (Bypasses Cache & Refetches All APIs)
   const handleManualRefresh = useCallback(async () => {
@@ -243,6 +221,7 @@ export const AdminDashboard: React.FC = () => {
     } finally {
       setIsRefreshing(false);
     }
+
   }, [checkBackendHealth, fetchUsersAndSummary, fetchDoctorProfiles, fetchPatientProfiles]);
 
   // Initial load
@@ -282,12 +261,10 @@ export const AdminDashboard: React.FC = () => {
 
       const msg = res.message || `User "${targetUser.name}" role updated to ${newRole.toUpperCase()}! 🎉`;
       showToast(msg, "success");
-      addAuditLog(`POST /api/v1/user/update executed for ${targetUser.username}: role -> ${newRole}`, "success");
       fetchUsersAndSummary();
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
       showToast(`Failed to update role: ${errMsg}`, "error");
-      addAuditLog(`Role update failed for ${targetUser.username}: ${errMsg}`, "error");
       fetchUsersAndSummary();
     } finally {
       setUpdatingUserId(null);
@@ -324,12 +301,10 @@ export const AdminDashboard: React.FC = () => {
 
       const msg = res.message || `User "${targetUser.name}" status updated to ${nextStatus.toUpperCase()}! 🎉`;
       showToast(msg, "success");
-      addAuditLog(`POST /api/v1/user/update executed for ${targetUser.username}: status -> ${nextStatus}`, "success");
       fetchUsersAndSummary();
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
       showToast(`Failed to update status: ${errMsg}`, "error");
-      addAuditLog(`Status update failed for ${targetUser.username}: ${errMsg}`, "error");
       fetchUsersAndSummary();
     } finally {
       setUpdatingUserId(null);
@@ -358,7 +333,6 @@ export const AdminDashboard: React.FC = () => {
 
       setUserCreatedMsg(successMessage);
       showToast(successMessage, "success");
-      addAuditLog(`POST /api/v1/users/signup created account ${assignedUsername} (${newUserRole})`, "success");
 
       await fetchUsersAndSummary();
 
@@ -373,7 +347,6 @@ export const AdminDashboard: React.FC = () => {
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
       showToast(`Registration error: ${errMsg}`, "error");
-      addAuditLog(`Signup error: ${errMsg}`, "error");
     } finally {
       setIsSubmittingNewUser(false);
     }
@@ -401,7 +374,6 @@ export const AdminDashboard: React.FC = () => {
 
       const successMsg = `Username & Profile for "${editOldUsername}" updated successfully in DB! 💾`;
       showToast(successMsg, "success");
-      addAuditLog(`Updated profile/username for ${editOldUsername} -> ${editNewUsername || editOldUsername}`, "success");
 
       await fetchUsersAndSummary();
 
@@ -413,7 +385,6 @@ export const AdminDashboard: React.FC = () => {
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
       showToast(`Profile update failed: ${errMsg}`, "error");
-      addAuditLog(`Username & profile update error: ${errMsg}`, "error");
     } finally {
       setIsSubmittingUsernameEdit(false);
     }
@@ -441,7 +412,6 @@ export const AdminDashboard: React.FC = () => {
 
       const successMsg = `Password & Role updated for user "${editPassTargetUsername}" successfully! 🔐`;
       showToast(successMsg, "success");
-      addAuditLog(`Updated password/role for user ${editPassTargetUsername} to ${editPassRole}`, "success");
 
       await fetchUsersAndSummary();
 
@@ -453,7 +423,6 @@ export const AdminDashboard: React.FC = () => {
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
       showToast(`Password & Role update failed: ${errMsg}`, "error");
-      addAuditLog(`Password & role update error: ${errMsg}`, "error");
     } finally {
       setIsSubmittingPassEdit(false);
     }
@@ -489,7 +458,6 @@ export const AdminDashboard: React.FC = () => {
 
       const msg = `Doctor "${docName}" registered and saved in Database successfully! 🩺`;
       showToast(msg, "success");
-      addAuditLog(`Doctor entry created for ${docName} (${docEmail})`, "success");
 
       await fetchUsersAndSummary();
       await fetchDoctorProfiles();
@@ -508,7 +476,6 @@ export const AdminDashboard: React.FC = () => {
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
       showToast(`Doctor registration failed: ${errMsg}`, "error");
-      addAuditLog(`Doctor entry creation error: ${errMsg}`, "error");
     } finally {
       setIsSubmittingDoc(false);
     }
@@ -542,7 +509,6 @@ export const AdminDashboard: React.FC = () => {
 
       const msg = `Patient "${patName}" registered and saved in Database successfully! 🧑‍🤝‍🧑`;
       showToast(msg, "success");
-      addAuditLog(`Patient entry created for ${patName} (${patEmail})`, "success");
 
       await fetchUsersAndSummary();
       await fetchPatientProfiles();
@@ -559,7 +525,6 @@ export const AdminDashboard: React.FC = () => {
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
       showToast(`Patient registration failed: ${errMsg}`, "error");
-      addAuditLog(`Patient entry creation error: ${errMsg}`, "error");
     } finally {
       setIsSubmittingPat(false);
     }
@@ -597,7 +562,6 @@ export const AdminDashboard: React.FC = () => {
       });
 
       showToast(`Doctor profile for "${editDocName}" updated in Database! 💾`, "success");
-      addAuditLog(`Updated Doctor profile ID ${editingDoctor.id}`, "success");
       setEditingDoctor(null);
       await fetchDoctorProfiles();
     } catch (error) {
@@ -636,7 +600,6 @@ export const AdminDashboard: React.FC = () => {
       });
 
       showToast(`Patient profile for "${editPatName}" updated in Database! 💾`, "success");
-      addAuditLog(`Updated Patient profile ID ${editingPatient.id}`, "success");
       setEditingPatient(null);
       await fetchPatientProfiles();
     } catch (error) {
