@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import "./Home.css";
 import { useAuthStore } from "../store/useAuthStore";
 import { getRoleDashboardPath, formatRoleName } from "../utils/roleUtils";
+import logoImg from "../assets/Hospital CRM Healthcare Logo (1).png";
 
 function Home() {
   const navigate = useNavigate();
@@ -16,98 +17,102 @@ function Home() {
 
   return (
     <div className="home-page">
+      {/* Top Navigation Bar */}
       <nav className="navbar">
-        <div className="home-brand">
-          <div className="brand-icon">+</div>
-          <span>Doctor CRM</span>
+        {/* Brand / Logo */}
+        <div className="home-brand" onClick={() => navigate("/")} style={{ cursor: "pointer" }}>
+          <img src={logoImg} alt="Hospital CRM Logo" className="brand-logo-img" />
+          <div className="brand-text">
+            <span className="brand-name">Hospital CRM</span>
+            <span className="brand-tagline">Healthcare Management</span>
+          </div>
         </div>
 
+
+        {/* Action Buttons */}
         <div className="nav-buttons">
           {isAuthenticated ? (
             <>
-              <span className="user-welcome">
-                Welcome, {user?.name || user?.username || "User"} ({formatRoleName(user?.role)})
-              </span>
-              <button
-                onClick={() => navigate(userDashboardPath)}
-                className="signup-link"
-              >
-                Go to Dashboard
+              <div className="user-pill">
+                <span className="user-dot">●</span>
+                {user?.name || user?.username || "User"}
+                <span className="user-role-badge">{formatRoleName(user?.role)}</span>
+              </div>
+              <button onClick={() => navigate(userDashboardPath)} className="btn-nav-primary">
+                Dashboard 🚀
               </button>
-              <button onClick={handleLogout} className="login-link logout-btn">
+              <button onClick={handleLogout} className="btn-nav-ghost">
                 Logout
               </button>
             </>
           ) : (
             <>
-              <Link to="/login" className="login-link">
-                Login
-              </Link>
-              <Link to="/signup" className="signup-link">
-                Sign Up
-              </Link>
+              <Link to="/login" className="btn-nav-ghost">Login</Link>
+              <Link to="/signup" className="btn-nav-primary">Get Started →</Link>
             </>
           )}
         </div>
       </nav>
 
-      <main className="home-content">
-        <h1>
-          Manage your practice.
-          <br />
-          <span>Care for your patients.</span>
-        </h1>
-
-        <p>
-          Doctor CRM features 4 specialized portals based on user role:
-          Patient, Doctor, Admin, and Receptionist.
-        </p>
-
-        <div className="home-actions">
-          {isAuthenticated ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "15px", alignItems: "center" }}>
-              <div className="auth-status-badge">
-                ✓ Logged in as <strong>{formatRoleName(user?.role)}</strong>
-              </div>
-              <Link to={userDashboardPath} className="home-login-button">
-                Open {formatRoleName(user?.role)} Dashboard
+      {/* Hero Section */}
+      <main className="hero-section">
+        <div className="hero-content">
+          <div className="hero-badge">🏥 Trusted Healthcare Management</div>
+          <h1 className="hero-title">
+            Smart Healthcare,<br />
+            <span className="hero-title-accent">Simplified.</span>
+          </h1>
+          <p className="hero-subtitle">
+            A complete CRM platform for hospitals — manage doctors, patients,
+            appointments, and staff all in one place. Built for modern healthcare.
+          </p>
+          <div className="hero-actions">
+            {isAuthenticated ? (
+              <Link to={userDashboardPath} className="btn-primary">
+                Go to Dashboard 🚀
               </Link>
-            </div>
-          ) : (
-            <>
-              <Link to="/login" className="home-login-button">
-                Login to Portal
-              </Link>
-              <Link to="/signup" className="home-signup-button">
-                Create Account
-              </Link>
-            </>
-          )}
+            ) : (
+              <>
+                <Link to="/signup" className="btn-primary">
+                  Get Started — It's Free
+                </Link>
+                <Link to="/login" className="btn-outline">
+                  Login
+                </Link>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* 4 Role Enum Cards Section */}
-        <div style={{ marginTop: "60px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "20px", textAlign: "left" }}>
-          <div style={{ background: "white", padding: "20px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-            <h3 style={{ margin: "0 0 8px 0", color: "#0369a1" }}>👨‍⚕️ Doctor</h3>
-            <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>Manage appointments queue, write digital prescriptions & view patient history.</p>
+        {/* Feature Cards */}
+        <div className="features-grid">
+          <div className="feature-card">
+            <div className="feature-icon">👨‍⚕️</div>
+            <h3>Doctor Management</h3>
+            <p>Manage doctor profiles, schedules, and specializations effortlessly.</p>
           </div>
-
-          <div style={{ background: "white", padding: "20px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-            <h3 style={{ margin: "0 0 8px 0", color: "#15803d" }}>🏥 Patient</h3>
-            <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>Book appointments, view digital prescriptions & access medical health card.</p>
+          <div className="feature-card">
+            <div className="feature-icon">🗓️</div>
+            <h3>Appointments</h3>
+            <p>Book, track, and manage patient appointments in real time.</p>
           </div>
-
-          <div style={{ background: "white", padding: "20px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-            <h3 style={{ margin: "0 0 8px 0", color: "#b45309" }}>⚙️ Admin</h3>
-            <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>Manage system users, assign roles, configure clinic settings & view security logs.</p>
+          <div className="feature-card">
+            <div className="feature-icon">🧾</div>
+            <h3>Patient Records</h3>
+            <p>Centralized patient data — history, prescriptions, and reports.</p>
           </div>
-
-          <div style={{ background: "white", padding: "20px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-            <h3 style={{ margin: "0 0 8px 0", color: "#6b21a8" }}>💁‍♀️ Receptionist</h3>
-            <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>Register walk-in OPD patients, issue live tokens & manage front desk queue.</p>
+          <div className="feature-card">
+            <div className="feature-icon">🏨</div>
+            <h3>Reception Desk</h3>
+            <p>Streamline front desk operations and patient check-ins instantly.</p>
           </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="home-footer">
+        <p>© 2026 Hospital CRM — Built for better healthcare management.</p>
+      </footer>
     </div>
   );
 }

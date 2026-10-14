@@ -7,6 +7,7 @@ import { authService } from "../service/authService";
 import { useAuthStore } from "../store/useAuthStore";
 import { getRoleDashboardPath } from "../utils/roleUtils";
 import type { UserRole } from "../types/auth";
+import logoImg from "../assets/Hospital CRM Healthcare Logo (1).png";
 
 interface LoginFormErrors {
   username?: string;
@@ -140,8 +141,8 @@ function Login() {
       {/* Left Branding Panel */}
       <div className="login-left">
         <div className="brand">
-          <div className="brand-icon">+</div>
-          <span>Doctor CRM</span>
+          <img src={logoImg} alt="Hospital CRM Logo" style={{ height: "42px", width: "auto", objectFit: "contain", borderRadius: "6px" }} />
+          <span>Hospital CRM</span>
         </div>
 
         <div className="welcome-content">
@@ -157,15 +158,15 @@ function Login() {
           </p>
         </div>
 
-        <div className="left-footer">© 2026 Doctor CRM</div>
+        <div className="left-footer">© 2026 Hospital CRM</div>
       </div>
 
       {/* Right Form Card */}
       <div className="login-right">
         <div className="login-card">
           <div className="mobile-brand">
-            <div className="brand-icon">+</div>
-            <span>Doctor CRM</span>
+            <img src={logoImg} alt="Hospital CRM Logo" style={{ height: "36px", width: "auto", objectFit: "contain", borderRadius: "6px" }} />
+            <span>Hospital CRM</span>
           </div>
 
           {viewMode === "login" ? (

@@ -1,7 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
+import { adminService } from "../service/adminService";
+import { getApiErrorMessage } from "../service/api";
 import "./ReceptionistDashboard.css";
+import logoImg from "../assets/Hospital CRM Healthcare Logo (1).png";
+import type { DoctorProfile } from "../types/admin";
 
 interface OPDToken {
   tokenNumber: string;
@@ -19,6 +23,13 @@ export const ReceptionistDashboard: React.FC = () => {
   const { user, logout } = useAuthStore();
   const [activeTab, setActiveTab] = useState<"tokens" | "newWalkIn" | "doctors">("tokens");
 
+  // Dynamic API Doctors List
+  const [doctorsList, setDoctorsList] = useState<DoctorProfile[]>([]);
+  const [isLoadingDoctors, setIsLoadingDoctors] = useState<boolean>(false);
+
+  // Dynamic OPD Tokens List (NO HARDCODED DUMMY DATA)
+  const [tokensList, setTokensList] = useState<OPDToken[]>([]);
+
   // New Walk-in Registration State
   const [walkInName, setWalkInName] = useState("");
   const [walkInAge, setWalkInAge] = useState("");
@@ -27,38 +38,21 @@ export const ReceptionistDashboard: React.FC = () => {
   const [priority, setPriority] = useState<"Normal" | "Urgent">("Normal");
   const [tokenCreatedMsg, setTokenCreatedMsg] = useState("");
 
-  const [tokensList, setTokensList] = useState<OPDToken[]>([
-    {
-      tokenNumber: "TK-01",
-      patientName: "Rahul Sharma",
-      age: 34,
-      gender: "Male",
-      doctorAssigned: "Dr. Rajesh Gupta",
-      status: "Checked In",
-      priority: "Normal",
-      timeIssued: "09:15 AM",
-    },
-    {
-      tokenNumber: "TK-02",
-      patientName: "Priya Patel",
-      age: 28,
-      gender: "Female",
-      doctorAssigned: "Dr. Ananya Roy",
-      status: "In OPD",
-      priority: "Urgent",
-      timeIssued: "09:30 AM",
-    },
-    {
-      tokenNumber: "TK-03",
-      patientName: "Amit Kumar",
-      age: 52,
-      gender: "Male",
-      doctorAssigned: "Dr. Rajesh Gupta",
-      status: "Checked In",
-      priority: "Normal",
-      timeIssued: "10:00 AM",
-    },
-  ]);
+  const fetchDoctors = useCallback(async () => {
+    setIsLoadingDoctors(true);
+    try {
+      const data = await adminService.getDoctorData();
+      setDoctorsList(data || []);
+    } catch (err) {
+      console.warn("Failed to fetch doctors list:", getApiErrorMessage(err));
+    } finally {
+      setIsLoadingDoctors(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDoctors();
+  }, [fetchDoctors]);
 
   const handleLogout = () => {
     logout();
@@ -105,8 +99,9 @@ export const ReceptionistDashboard: React.FC = () => {
       {/* Top Navbar */}
       <header className="dashboard-header">
         <div className="brand-section">
+          <img src={logoImg} alt="Hospital CRM Logo" style={{ height: "38px", width: "auto", objectFit: "contain", borderRadius: "6px" }} />
           <div className="brand-badge reception-badge">💁‍♀️ Reception Desk</div>
-          <h2>Doctor CRM</h2>
+          <h2>Hospital CRM</h2>
         </div>
 
         <div className="user-profile-section">
@@ -115,10 +110,8 @@ export const ReceptionistDashboard: React.FC = () => {
           </div>
 
           <div className="profile-info">
-            <span className="profile-name">
-              {user?.name || user?.username || "Receptionist"}
-            </span>
-            <span className="profile-role">Front Desk Executive</span>
+            <span className="profile-name">{user?.name || user?.username || "Reception Staff"}</span>
+            <span className="profile-role">Receptionist</span>
           </div>
 
           <button onClick={handleLogout} className="dashboard-logout-btn">
@@ -135,31 +128,35 @@ export const ReceptionistDashboard: React.FC = () => {
               className={`menu-item ${activeTab === "tokens" ? "active" : ""}`}
               onClick={() => setActiveTab("tokens")}
             >
-              🎟️ Live OPD Queue
+              🎫 Active OPD Tokens ({tokensList.length})
             </button>
             <button
               className={`menu-item ${activeTab === "newWalkIn" ? "active" : ""}`}
               onClick={() => setActiveTab("newWalkIn")}
             >
-              ➕ New Walk-in Check-in
+              ➕ Issue Walk-in Token
             </button>
             <button
               className={`menu-item ${activeTab === "doctors" ? "active" : ""}`}
               onClick={() => setActiveTab("doctors")}
             >
-              👨‍⚕️ Doctor Duty Roster
+              👨‍⚕️ Doctor Duty Status ({doctorsList.length})
             </button>
           </nav>
 
           <div className="quick-stats-box">
-            <h4>OPD Status</h4>
+            <h4>OPD Desk Overview</h4>
             <div className="stat-mini">
-              <span>Next Available:</span>
-              <strong>Dr. Rajesh Gupta</strong>
+              <span>Tokens Issued:</span>
+              <strong>{tokensList.length}</strong>
             </div>
             <div className="stat-mini">
-              <span>Avg Wait Time:</span>
-              <strong>12 mins</strong>
+              <span>In Queue:</span>
+              <strong>{tokensList.filter((t) => t.status === "Checked In").length}</strong>
+            </div>
+            <div className="stat-mini">
+              <span>Urgent Cases:</span>
+              <strong>{tokensList.filter((t) => t.priority === "Urgent").length}</strong>
             </div>
           </div>
         </aside>
@@ -172,45 +169,38 @@ export const ReceptionistDashboard: React.FC = () => {
               <div className="stat-icon">🎫</div>
               <div className="stat-content">
                 <h3>{tokensList.length}</h3>
-                <p>Tokens Issued Today</p>
+                <p>Today's OPD Tokens</p>
               </div>
             </div>
 
             <div className="stat-card orange">
-              <div className="stat-icon">⏳</div>
+              <div className="stat-icon">⌛</div>
               <div className="stat-content">
                 <h3>{tokensList.filter((t) => t.status === "Checked In").length}</h3>
-                <p>Patients Waiting</p>
+                <p>Waiting in Lobby</p>
               </div>
             </div>
 
             <div className="stat-card green">
-              <div className="stat-icon">🩺</div>
+              <div className="stat-icon">👨‍⚕️</div>
               <div className="stat-content">
-                <h3>{tokensList.filter((t) => t.status === "In OPD").length}</h3>
-                <p>Currently in OPD Room</p>
-              </div>
-            </div>
-
-            <div className="stat-card purple">
-              <div className="stat-icon">🚨</div>
-              <div className="stat-content">
-                <h3>{tokensList.filter((t) => t.priority === "Urgent").length}</h3>
-                <p>Urgent Cases</p>
+                <h3>{doctorsList.length}</h3>
+                <p>Available Doctors</p>
               </div>
             </div>
           </div>
 
-          {/* Tab 1: Live OPD Queue */}
+          {/* Tab 1: OPD Tokens Queue */}
           {activeTab === "tokens" && (
             <section className="dashboard-section">
               <div className="section-header">
-                <h3>Front Desk OPD Token Queue</h3>
+                <h3>Live OPD Queue Management</h3>
                 <button
                   className="submit-presc-btn"
                   onClick={() => setActiveTab("newWalkIn")}
+                  style={{ padding: "8px 16px", fontSize: "13px" }}
                 >
-                  + Issue New OPD Token
+                  + Issue New Token
                 </button>
               </div>
 
@@ -218,62 +208,64 @@ export const ReceptionistDashboard: React.FC = () => {
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Token No</th>
-                      <th>Issued Time</th>
+                      <th>Token No.</th>
                       <th>Patient Name</th>
                       <th>Age / Gender</th>
-                      <th>Doctor Assigned</th>
+                      <th>Assigned Doctor</th>
+                      <th>Time Issued</th>
                       <th>Priority</th>
                       <th>Status</th>
                       <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {tokensList.map((token) => (
-                      <tr key={token.tokenNumber}>
-                        <td><strong>{token.tokenNumber}</strong></td>
-                        <td>{token.timeIssued}</td>
-                        <td>{token.patientName}</td>
-                        <td>{token.age} yrs / {token.gender}</td>
-                        <td>{token.doctorAssigned}</td>
-                        <td>
-                          <span
-                            className={`pill-tag ${
-                              token.priority === "Urgent" ? "follow-up" : "new-checkup"
-                            }`}
-                          >
-                            {token.priority}
-                          </span>
-                        </td>
-                        <td>
-                          <span
-                            className={`status-tag ${token.status.toLowerCase().replace(" ", "-")}`}
-                          >
-                            {token.status}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="action-buttons-group">
-                            {token.status === "Checked In" && (
-                              <button
-                                className="action-btn start"
-                                onClick={() => handleStatusChange(token.tokenNumber, "In OPD")}
-                              >
-                                Send to OPD
-                              </button>
-                            )}
-                            {token.status === "In OPD" && (
-                              <button
-                                className="action-btn complete"
-                                onClick={() => handleStatusChange(token.tokenNumber, "Completed")}
-                              >
-                                Complete
-                              </button>
-                            )}
-                          </div>
+                    {tokensList.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="empty-state">
+                          No OPD tokens issued yet for today.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      tokensList.map((t) => (
+                        <tr key={t.tokenNumber}>
+                          <td><strong>{t.tokenNumber}</strong></td>
+                          <td>{t.patientName}</td>
+                          <td>{t.age} Yrs / {t.gender}</td>
+                          <td>{t.doctorAssigned}</td>
+                          <td>{t.timeIssued}</td>
+                          <td>
+                            <span className={`pill-tag ${t.priority === "Urgent" ? "follow-up" : "new-checkup"}`}>
+                              {t.priority}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`status-tag ${t.status.toLowerCase().replace(" ", "-")}`}>
+                              {t.status}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="action-buttons-group">
+                              {t.status === "Checked In" && (
+                                <button
+                                  className="action-btn start"
+                                  onClick={() => handleStatusChange(t.tokenNumber, "In OPD")}
+                                >
+                                  Send to OPD
+                                </button>
+                              )}
+                              {t.status === "In OPD" && (
+                                <button
+                                  className="action-btn complete"
+                                  onClick={() => handleStatusChange(t.tokenNumber, "Completed")}
+                                >
+                                  Complete
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -283,7 +275,7 @@ export const ReceptionistDashboard: React.FC = () => {
           {/* Tab 2: Issue Walk-in Token */}
           {activeTab === "newWalkIn" && (
             <section className="dashboard-section form-section">
-              <h3>Walk-in Patient OPD Registration</h3>
+              <h3>Register Walk-in OPD Patient</h3>
 
               {tokenCreatedMsg && (
                 <div className="alert-banner success-alert">
@@ -296,7 +288,7 @@ export const ReceptionistDashboard: React.FC = () => {
                   <label>Patient Full Name</label>
                   <input
                     type="text"
-                    placeholder="Enter patient name..."
+                    placeholder="e.g. Ramesh Kumar"
                     value={walkInName}
                     onChange={(e) => setWalkInName(e.target.value)}
                     required
@@ -336,27 +328,33 @@ export const ReceptionistDashboard: React.FC = () => {
                       onChange={(e) => setSelectedDoctor(e.target.value)}
                       required
                     >
-                      <option value="" disabled>Select Doctor...</option>
-                      <option value="Dr. Rajesh Gupta">Dr. Rajesh Gupta (General Medicine)</option>
-                      <option value="Dr. Ananya Roy">Dr. Ananya Roy (Cardiology)</option>
-                      <option value="Dr. Meera Sen">Dr. Meera Sen (Dermatology)</option>
+                      <option value="" disabled>Select Doctor from Database</option>
+                      {doctorsList.length === 0 ? (
+                        <option value="Dr. On Duty">General OPD Doctor</option>
+                      ) : (
+                        doctorsList.map((doc) => (
+                          <option key={doc.id} value={doc.doctor_name}>
+                            {doc.doctor_name} ({doc.doctor_type})
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
 
                   <div className="form-group">
-                    <label>Priority Level</label>
+                    <label>Priority</label>
                     <select
                       value={priority}
                       onChange={(e) => setPriority(e.target.value as "Normal" | "Urgent")}
                     >
-                      <option value="Normal">Normal Walk-in</option>
-                      <option value="Urgent">🚨 Emergency / Urgent</option>
+                      <option value="Normal">Normal Queue</option>
+                      <option value="Urgent">Urgent / Emergency</option>
                     </select>
                   </div>
                 </div>
 
                 <button type="submit" className="submit-presc-btn">
-                  🎟️ Print & Issue OPD Token
+                  Issue OPD Token
                 </button>
               </form>
             </section>
@@ -365,26 +363,74 @@ export const ReceptionistDashboard: React.FC = () => {
           {/* Tab 3: Doctor Duty Roster */}
           {activeTab === "doctors" && (
             <section className="dashboard-section">
-              <h3>Doctor Availability & Room Roster</h3>
-              <div className="appointments-cards-grid">
-                <div className="apt-card">
-                  <h4>Dr. Rajesh Gupta</h4>
-                  <p className="speciality">Room 104 - General OPD</p>
-                  <p className="status-online">🟢 Available (3 Patients in Queue)</p>
-                </div>
-
-                <div className="apt-card">
-                  <h4>Dr. Ananya Roy</h4>
-                  <p className="speciality">Room 201 - Cardiology</p>
-                  <p className="status-online">🟢 Available (1 Patient in OPD)</p>
-                </div>
-
-                <div className="apt-card">
-                  <h4>Dr. Meera Sen</h4>
-                  <p className="speciality">Room 108 - Dermatology</p>
-                  <p className="status-offline">🔴 In Surgery / Break</p>
-                </div>
+              <div className="section-header">
+                <h3>Doctor Duty Status (API Dynamic)</h3>
               </div>
+
+              {isLoadingDoctors ? (
+                <div className="empty-state">Loading Doctor Duty Status from Database...</div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Doc ID</th>
+                        <th>Doctor Name</th>
+                        <th>Speciality</th>
+                        <th>Fee</th>
+                        <th>Abilities</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {doctorsList.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="empty-state">
+                            No doctors found in Database.
+                          </td>
+                        </tr>
+                      ) : (
+                        doctorsList.map((doc) => (
+                          <tr key={doc.id}>
+                            <td><strong>#DOC-{doc.id}</strong></td>
+                            <td><strong>{doc.doctor_name}</strong></td>
+                            <td>
+                              <span className="pill-tag role-doctor">
+                                {doc.doctor_type}
+                              </span>
+                            </td>
+                            <td>₹{doc.consultation_fee}</td>
+                            <td>{doc.doctor_abilities}</td>
+                            <td>
+                              <span
+                                className={`badge-availability ${
+                                  doc.availability_status === "available"
+                                    ? "available"
+                                    : "unavailable"
+                                }`}
+                              >
+                                {doc.availability_status.toUpperCase()}
+                              </span>
+                            </td>
+                            <td>
+                              <button
+                                className="action-btn start"
+                                onClick={() => {
+                                  setSelectedDoctor(doc.doctor_name);
+                                  setActiveTab("newWalkIn");
+                                }}
+                              >
+                                Assign Token
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
           )}
         </main>

@@ -4,6 +4,7 @@ import "./Signup.css";
 import { useSignupMutation } from "../hooks/useAuthQueries";
 import { getApiErrorMessage } from "../service/api";
 import type { UserRole } from "../types/auth";
+import logoImg from "../assets/Hospital CRM Healthcare Logo (1).png";
 
 interface FormErrors {
   name?: string;
@@ -129,8 +130,8 @@ function Signup() {
     <div className="signup-page">
       <div className="signup-card">
         <div className="signup-brand">
-          <div className="brand-icon">+</div>
-          <span>Doctor CRM</span>
+          <img src={logoImg} alt="Hospital CRM Logo" style={{ height: "40px", width: "auto", objectFit: "contain", borderRadius: "6px" }} />
+          <span>Hospital CRM</span>
         </div>
 
         <div className="signup-heading">

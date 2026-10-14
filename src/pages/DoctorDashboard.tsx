@@ -1,7 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
+import { adminService } from "../service/adminService";
+import { getApiErrorMessage } from "../service/api";
 import "./DoctorDashboard.css";
+import logoImg from "../assets/Hospital CRM Healthcare Logo (1).png";
+import type { PatientProfile } from "../types/admin";
 
 interface Appointment {
   id: string;
@@ -14,13 +18,13 @@ interface Appointment {
   type: "Follow-up" | "New Checkup" | "Emergency";
 }
 
-interface Patient {
+interface PrescriptionRecord {
   id: string;
-  name: string;
-  age: number;
-  phone: string;
-  lastVisit: string;
-  condition: string;
+  patientName: string;
+  medicine: string;
+  dosage: string;
+  notes: string;
+  date: string;
 }
 
 export const DoctorDashboard: React.FC = () => {
@@ -28,7 +32,15 @@ export const DoctorDashboard: React.FC = () => {
   const { user, logout } = useAuthStore();
   const [activeTab, setActiveTab] = useState<"appointments" | "prescription" | "patients">("appointments");
   const [isAvailable, setIsAvailable] = useState<boolean>(true);
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>(";");
+
+  // Dynamic API Patients List
+  const [patientsList, setPatientsList] = useState<PatientProfile[]>([]);
+  const [isLoadingPatients, setIsLoadingPatients] = useState<boolean>(false);
+
+  // Dynamic Appointments & Prescriptions (starts empty - NO HARDCODED DUMMY DATA)
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [prescriptionsList, setPrescriptionsList] = useState<PrescriptionRecord[]>([]);
 
   // Prescription Form State
   const [prescPatient, setPrescPatient] = useState("");
@@ -37,55 +49,21 @@ export const DoctorDashboard: React.FC = () => {
   const [prescNotes, setPrescNotes] = useState("");
   const [prescSuccessMsg, setPrescSuccessMsg] = useState("");
 
-  const [appointments, setAppointments] = useState<Appointment[]>([
-    {
-      id: "APT-101",
-      patientName: "Rahul Sharma",
-      age: 34,
-      gender: "Male",
-      time: "09:30 AM",
-      reason: "Severe Headache & Fever",
-      status: "Waiting",
-      type: "New Checkup",
-    },
-    {
-      id: "APT-102",
-      patientName: "Priya Patel",
-      age: 28,
-      gender: "Female",
-      time: "10:15 AM",
-      reason: "Skin Allergy Follow-up",
-      status: "In Consultation",
-      type: "Follow-up",
-    },
-    {
-      id: "APT-103",
-      patientName: "Amit Kumar",
-      age: 52,
-      gender: "Male",
-      time: "11:00 AM",
-      reason: "Blood Pressure Routine Check",
-      status: "Waiting",
-      type: "Follow-up",
-    },
-    {
-      id: "APT-104",
-      patientName: "Sunita Verma",
-      age: 41,
-      gender: "Female",
-      time: "11:45 AM",
-      reason: "Acute Joint Pain",
-      status: "Completed",
-      type: "New Checkup",
-    },
-  ]);
+  const fetchPatients = useCallback(async () => {
+    setIsLoadingPatients(true);
+    try {
+      const data = await adminService.getPatientData();
+      setPatientsList(data || []);
+    } catch (err) {
+      console.warn("Failed to fetch patients:", getApiErrorMessage(err));
+    } finally {
+      setIsLoadingPatients(false);
+    }
+  }, []);
 
-  const [patients] = useState<Patient[]>([
-    { id: "P-001", name: "Rahul Sharma", age: 34, phone: "+91 9876543210", lastVisit: "Today", condition: "Migraine" },
-    { id: "P-002", name: "Priya Patel", age: 28, phone: "+91 9876543211", lastVisit: "Today", condition: "Dermatitis" },
-    { id: "P-003", name: "Amit Kumar", age: 52, phone: "+91 9876543212", lastVisit: "25 Sep 2026", condition: "Hypertension" },
-    { id: "P-004", name: "Sunita Verma", age: 41, phone: "+91 9876543213", lastVisit: "Today", condition: "Arthritis" },
-  ]);
+  useEffect(() => {
+    fetchPatients();
+  }, [fetchPatients]);
 
   const handleLogout = () => {
     logout();
@@ -101,7 +79,19 @@ export const DoctorDashboard: React.FC = () => {
   const handleSavePrescription = (e: React.FormEvent) => {
     e.preventDefault();
     if (!prescPatient || !prescMedicine) return;
+
+    const newPresc: PrescriptionRecord = {
+      id: `RX-${Math.floor(1000 + Math.random() * 9000)}`,
+      patientName: prescPatient,
+      medicine: prescMedicine,
+      dosage: prescDosage || "As directed",
+      notes: prescNotes || "Take after meals",
+      date: new Date().toLocaleDateString(),
+    };
+
+    setPrescriptionsList((prev) => [newPresc, ...prev]);
     setPrescSuccessMsg(`Prescription created successfully for ${prescPatient}!`);
+
     setTimeout(() => {
       setPrescSuccessMsg("");
       setPrescPatient("");
@@ -122,8 +112,9 @@ export const DoctorDashboard: React.FC = () => {
       {/* Top Navbar */}
       <header className="dashboard-header">
         <div className="brand-section">
+          <img src={logoImg} alt="Hospital CRM Logo" style={{ height: "38px", width: "auto", objectFit: "contain", borderRadius: "6px" }} />
           <div className="brand-badge doctor-badge">👨‍⚕️ Doctor Portal</div>
-          <h2>Doctor CRM</h2>
+          <h2>Hospital CRM</h2>
         </div>
 
         <div className="user-profile-section">
@@ -135,15 +126,13 @@ export const DoctorDashboard: React.FC = () => {
               onClick={() => setIsAvailable(!isAvailable)}
               className="toggle-btn"
             >
-              {isAvailable ? "Set Busy" : "Set Available"}
+              Toggle Status
             </button>
           </div>
 
           <div className="profile-info">
-            <span className="profile-name">
-              Dr. {user?.name || user?.username || "Doctor"}
-            </span>
-            <span className="profile-role">Medical Practitioner</span>
+            <span className="profile-name">{user?.name || user?.username || "Dr. Practitioner"}</span>
+            <span className="profile-role">Doctor</span>
           </div>
 
           <button onClick={handleLogout} className="dashboard-logout-btn">
@@ -160,31 +149,35 @@ export const DoctorDashboard: React.FC = () => {
               className={`menu-item ${activeTab === "appointments" ? "active" : ""}`}
               onClick={() => setActiveTab("appointments")}
             >
-              📋 Appointments Queue
+              📋 Patient Queue ({appointments.length})
             </button>
             <button
               className={`menu-item ${activeTab === "prescription" ? "active" : ""}`}
               onClick={() => setActiveTab("prescription")}
             >
-              ✏️ Write Prescription
+              ✍️ Write Prescription ({prescriptionsList.length})
             </button>
             <button
               className={`menu-item ${activeTab === "patients" ? "active" : ""}`}
               onClick={() => setActiveTab("patients")}
             >
-              👥 Patient Directory
+              📁 Patient Directory ({patientsList.length})
             </button>
           </nav>
 
           <div className="quick-stats-box">
-            <h4>Quick Info</h4>
+            <h4>Today's OPD Summary</h4>
             <div className="stat-mini">
-              <span>Opd Counter:</span>
-              <strong>Room 104</strong>
+              <span>Total Queue:</span>
+              <strong>{appointments.length}</strong>
             </div>
             <div className="stat-mini">
-              <span>Shift:</span>
-              <strong>Morning (09 AM - 02 PM)</strong>
+              <span>Waiting:</span>
+              <strong>{appointments.filter((a) => a.status === "Waiting").length}</strong>
+            </div>
+            <div className="stat-mini">
+              <span>Completed:</span>
+              <strong>{appointments.filter((a) => a.status === "Completed").length}</strong>
             </div>
           </div>
         </aside>
@@ -194,10 +187,10 @@ export const DoctorDashboard: React.FC = () => {
           {/* Top Metrics Cards */}
           <div className="stats-grid">
             <div className="stat-card blue">
-              <div className="stat-icon">📅</div>
+              <div className="stat-icon">🧑‍🤝‍🧑</div>
               <div className="stat-content">
                 <h3>{appointments.length}</h3>
-                <p>Today's Appointments</p>
+                <p>Total OPD Patients</p>
               </div>
             </div>
 
@@ -205,7 +198,7 @@ export const DoctorDashboard: React.FC = () => {
               <div className="stat-icon">⏳</div>
               <div className="stat-content">
                 <h3>{appointments.filter((a) => a.status === "Waiting").length}</h3>
-                <p>Waiting Patients</p>
+                <p>Patients Waiting</p>
               </div>
             </div>
 
@@ -213,27 +206,19 @@ export const DoctorDashboard: React.FC = () => {
               <div className="stat-icon">✅</div>
               <div className="stat-content">
                 <h3>{appointments.filter((a) => a.status === "Completed").length}</h3>
-                <p>Consultations Completed</p>
-              </div>
-            </div>
-
-            <div className="stat-card purple">
-              <div className="stat-icon">💊</div>
-              <div className="stat-content">
-                <h3>12</h3>
-                <p>Prescriptions Issued</p>
+                <p>Consultations Done</p>
               </div>
             </div>
           </div>
 
-          {/* Tab 1: Appointments Queue */}
+          {/* Tab 1: OPD Appointments Queue */}
           {activeTab === "appointments" && (
             <section className="dashboard-section">
               <div className="section-header">
-                <h3>Today's Patient Queue</h3>
+                <h3>OPD Patient Queue & Consultations</h3>
                 <input
                   type="text"
-                  placeholder="Search by patient name or ID..."
+                  placeholder="Search patient or Token ID..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="table-search-input"
@@ -245,32 +230,32 @@ export const DoctorDashboard: React.FC = () => {
                   <thead>
                     <tr>
                       <th>Token / ID</th>
-                      <th>Time</th>
                       <th>Patient Name</th>
                       <th>Age / Gender</th>
-                      <th>Reason for Visit</th>
-                      <th>Type</th>
+                      <th>Time</th>
+                      <th>Reason / Symptoms</th>
+                      <th>Checkup Type</th>
                       <th>Status</th>
-                      <th>Actions</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredAppointments.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="empty-state">
-                          No matching appointments found.
+                          No OPD patients currently in queue.
                         </td>
                       </tr>
                     ) : (
                       filteredAppointments.map((apt) => (
                         <tr key={apt.id}>
                           <td><strong>{apt.id}</strong></td>
-                          <td>{apt.time}</td>
                           <td>{apt.patientName}</td>
-                          <td>{apt.age} yrs / {apt.gender}</td>
+                          <td>{apt.age} Yrs / {apt.gender}</td>
+                          <td>{apt.time}</td>
                           <td>{apt.reason}</td>
                           <td>
-                            <span className={`pill-tag ${apt.type.toLowerCase().replace(" ", "-")}`}>
+                            <span className={`pill-tag ${apt.type === "New Checkup" ? "new-checkup" : "follow-up"}`}>
                               {apt.type}
                             </span>
                           </td>
@@ -281,12 +266,12 @@ export const DoctorDashboard: React.FC = () => {
                           </td>
                           <td>
                             <div className="action-buttons-group">
-                              {apt.status === "Waiting" && (
+                              {apt.status !== "In Consultation" && apt.status !== "Completed" && (
                                 <button
                                   className="action-btn start"
                                   onClick={() => handleStatusChange(apt.id, "In Consultation")}
                                 >
-                                  Start
+                                  Call Patient
                                 </button>
                               )}
                               {apt.status === "In Consultation" && (
@@ -304,7 +289,7 @@ export const DoctorDashboard: React.FC = () => {
                                   setActiveTab("prescription");
                                 }}
                               >
-                                Rx
+                                Prescribe
                               </button>
                             </div>
                           </td>
@@ -317,7 +302,7 @@ export const DoctorDashboard: React.FC = () => {
             </section>
           )}
 
-          {/* Tab 2: Write Prescription */}
+          {/* Tab 2: Write Digital Prescription */}
           {activeTab === "prescription" && (
             <section className="dashboard-section form-section">
               <h3>Create Digital Prescription</h3>
@@ -329,92 +314,136 @@ export const DoctorDashboard: React.FC = () => {
               )}
 
               <form onSubmit={handleSavePrescription} className="prescription-form">
+                <div className="form-group">
+                  <label>Select or Enter Patient Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Rohan Verma"
+                    value={prescPatient}
+                    onChange={(e) => setPrescPatient(e.target.value)}
+                    required
+                  />
+                </div>
+
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Select Patient</label>
+                    <label>Medicine Name & Strength</label>
                     <input
                       type="text"
-                      placeholder="e.g. Rahul Sharma"
-                      value={prescPatient}
-                      onChange={(e) => setPrescPatient(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Medicine Name & Composition</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Paracetamol 650mg / Amoxicillin 500mg"
+                      placeholder="e.g. Paracetamol 650mg, Amoxicillin 500mg"
                       value={prescMedicine}
                       onChange={(e) => setPrescMedicine(e.target.value)}
                       required
                     />
                   </div>
-                </div>
 
-                <div className="form-row">
                   <div className="form-group">
                     <label>Dosage & Frequency</label>
                     <input
                       type="text"
-                      placeholder="e.g. 1 Tablet after meals (1-0-1 for 5 days)"
+                      placeholder="e.g. 1 Tablet twice daily after meals (5 Days)"
                       value={prescDosage}
                       onChange={(e) => setPrescDosage(e.target.value)}
-                      required
                     />
                   </div>
                 </div>
 
                 <div className="form-group">
-                  <label>Clinical Advice / Special Instructions</label>
+                  <label>Clinical Notes / Advice</label>
                   <textarea
-                    rows={4}
-                    placeholder="Drink plenty of warm water, rest for 3 days, avoid cold drinks..."
+                    rows={3}
+                    placeholder="e.g. Drink plenty of water. Rest for 3 days. Follow up next week."
                     value={prescNotes}
                     onChange={(e) => setPrescNotes(e.target.value)}
                   />
                 </div>
 
-                <div className="form-actions">
-                  <button type="submit" className="submit-presc-btn">
-                    💾 Generate & Save Prescription
-                  </button>
-                </div>
+                <button type="submit" className="submit-presc-btn">
+                  Issue Prescription
+                </button>
               </form>
+
+              {prescriptionsList.length > 0 && (
+                <div style={{ marginTop: "30px" }}>
+                  <h4>Issued Prescriptions History ({prescriptionsList.length})</h4>
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Rx ID</th>
+                          <th>Patient Name</th>
+                          <th>Medicines</th>
+                          <th>Dosage</th>
+                          <th>Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {prescriptionsList.map((rx) => (
+                          <tr key={rx.id}>
+                            <td><strong>{rx.id}</strong></td>
+                            <td>{rx.patientName}</td>
+                            <td>{rx.medicine}</td>
+                            <td>{rx.dosage}</td>
+                            <td>{rx.date}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </section>
           )}
 
           {/* Tab 3: Patient Directory */}
           {activeTab === "patients" && (
             <section className="dashboard-section">
-              <h3>Registered Patients Directory</h3>
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Patient ID</th>
-                      <th>Name</th>
-                      <th>Age</th>
-                      <th>Contact Phone</th>
-                      <th>Last Visit</th>
-                      <th>Primary Condition</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {patients.map((p) => (
-                      <tr key={p.id}>
-                        <td><strong>{p.id}</strong></td>
-                        <td>{p.name}</td>
-                        <td>{p.age}</td>
-                        <td>{p.phone}</td>
-                        <td>{p.lastVisit}</td>
-                        <td><span className="condition-tag">{p.condition}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="section-header">
+                <h3>Registered Patients Directory</h3>
               </div>
+
+              {isLoadingPatients ? (
+                <div className="empty-state">Loading Patient records from Database...</div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Patient ID</th>
+                        <th>Patient Name</th>
+                        <th>Age / Gender</th>
+                        <th>Contact Number</th>
+                        <th>Blood Group</th>
+                        <th>Address</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {patientsList.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="empty-state">
+                            No patient records found in Database.
+                          </td>
+                        </tr>
+                      ) : (
+                        patientsList.map((p) => (
+                          <tr key={p.id}>
+                            <td><strong>#PAT-{p.id}</strong></td>
+                            <td><strong>{p.patient_name}</strong></td>
+                            <td>{p.age} Yrs / {p.gender}</td>
+                            <td><code>{p.contact_number}</code></td>
+                            <td>
+                              <span className="pill-tag role-patient">
+                                {p.blood_group}
+                              </span>
+                            </td>
+                            <td>{p.address}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
           )}
         </main>

@@ -1,8 +1,15 @@
 .opd-counter-badge {
-  background: #f8fafc;
-  color: #334155;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-input);
   font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .opd-counter-badge {
+    width: 100%;
+    text-align: center;
+  }
 }

@@ -3,20 +3,15 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 
-// API Base URL
-//
-// Local development:
-//   http://localhost:8080
-//
-// Production/Vercel:
-//   https://doctor-crm-backend.vercel.app
-//
-// If VITE_API_BASE_URL is available, it will always be used.
-const BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.PROD
-    ? "https://doctor-crm-backend.vercel.app"
-    : "http://localhost:8080");
+// API Base URL — must be set in .env
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+if (!BASE_URL) {
+  throw new Error(
+    "[api.ts] VITE_API_BASE_URL is not defined. Please set it in your .env file.\n" +
+    "Example: VITE_API_BASE_URL=http://localhost:8080"
+  );
+}
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -44,7 +39,7 @@ api.interceptors.request.use(
 );
 
 // Response Interceptor
-// Handle unauthorized requests globally.
+// Handle 401 Unauthorized globally
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<{ message?: string; error?: string }>) => {

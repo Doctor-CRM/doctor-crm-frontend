@@ -1,33 +1,436 @@
 .system-health-badge {
-  background: #f8fafc;
+  background: var(--bg-subtle);
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border-input);
   font-size: 13px;
-  color: #334155;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.refresh-api-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--primary-color);
+  border: 1px solid var(--border-input);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.refresh-api-btn:hover:not(:disabled) {
+  background: var(--primary-light);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+.refresh-api-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.health-dot.online {
+  background-color: var(--status-online);
+  box-shadow: 0 0 6px rgba(22, 163, 74, 0.6);
+}
+
+.health-dot.offline {
+  background-color: var(--status-offline);
+  box-shadow: 0 0 6px rgba(220, 38, 38, 0.6);
 }
 
 .filter-controls {
   display: flex;
   gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.role-dropdown-select {
+  padding: 6px 10px;
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background-color: var(--bg-card);
+  transition: all 0.2s ease;
+}
+
+.role-dropdown-select:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.role-dropdown-select.role-doctor {
+  background: var(--role-doctor-bg);
+  color: var(--role-doctor-text);
+  border-color: #bae6fd;
+}
+
+.role-dropdown-select.role-patient {
+  background: var(--role-patient-bg);
+  color: var(--role-patient-text);
+  border-color: #bbf7d0;
+}
+
+.role-dropdown-select.role-receptionist {
+  background: var(--role-reception-bg);
+  color: var(--role-reception-text);
+  border-color: #e9d5ff;
+}
+
+.role-dropdown-select.role-admin {
+  background: var(--role-admin-bg);
+  color: var(--role-admin-text);
+  border-color: #fde68a;
+}
+
+.role-dropdown-select.role-recipient {
+  background: #fae8ff;
+  color: #86198f;
+  border-color: #f5d0fe;
 }
 
 .pill-tag.role-doctor {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: var(--role-doctor-bg);
+  color: var(--role-doctor-text);
 }
 
 .pill-tag.role-patient {
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--role-patient-bg);
+  color: var(--role-patient-text);
 }
 
 .pill-tag.role-receptionist {
-  background: #f3e8ff;
-  color: #6b21a8;
+  background: var(--role-reception-bg);
+  color: var(--role-reception-text);
 }
 
 .pill-tag.role-admin {
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--role-admin-bg);
+  color: var(--role-admin-text);
+}
+
+.pill-tag.role-recipient {
+  background: #fae8ff;
+  color: #86198f;
+}
+
+.action-btn.btn-activate {
+  background: var(--status-online);
+  color: var(--text-white);
+}
+
+.action-btn.btn-activate:hover {
+  background: #15803d;
+}
+
+.action-btn.btn-disable {
+  background: var(--danger-text);
+  color: var(--text-white);
+}
+
+.action-btn.btn-disable:hover {
+  background: #b91c1c;
+}
+
+.action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.admin-toast-alert {
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  animation: fadeIn 0.3s ease;
+}
+
+.admin-toast-alert.success {
+  background: var(--success-bg);
+  color: var(--success-text);
+  border: 1px solid var(--success-border);
+}
+
+.admin-toast-alert.error {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
+}
+
+.admin-toast-alert.info {
+  background: var(--role-doctor-bg);
+  color: var(--role-doctor-text);
+  border: 1px solid #bae6fd;
+}
+
+.close-toast-btn {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: inherit;
+  margin-left: 12px;
+}
+
+.table-loading-container {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.badge-availability {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-availability.available {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.badge-availability.unavailable {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* RESPONSIVE LAYOUT BREAKPOINTS */
+@media (max-width: 992px) {
+  .dashboard-header {
+    height: auto;
+    padding: 15px 20px;
+    flex-direction: column;
+    gap: 15px;
+    align-items: flex-start;
+  }
+
+  .user-profile-section {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-body {
+    flex-direction: column;
+  }
+
+  .dashboard-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .sidebar-menu {
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 10px;
+  }
+
+  .menu-item {
+    white-space: nowrap;
+    padding: 10px 14px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .filter-controls {
+    width: 100%;
+  }
+
+  .table-search-input {
+    width: 100% !important;
+  }
+}
+
+/* MODAL BACKDROP & CONTAINER STYLES FOR EDIT DOCTOR & EDIT PATIENT */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  padding: 20px;
+}
+
+.modal-container {
+  background: #ffffff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 620px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  padding: 28px;
+  border: 1px solid #e2e8f0;
+  animation: modalFadeIn 0.25s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #f1f5f9;
+  padding-bottom: 12px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.close-modal-btn {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #64748b;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.close-modal-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.btn-cancel {
+  padding: 10px 20px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-cancel:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.edit-btn {
+  background: var(--role-doctor-bg);
+  color: var(--role-doctor-text);
+  border: 1px solid #bae6fd;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.edit-btn:hover {
+  background: #bae6fd;
+  transform: translateY(-1px);
+}
+
+/* 3 RADIO BUTTONS MODE SELECTOR FOR USER MANAGEMENT */
+.user-form-mode-selector {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 24px;
+  background: var(--bg-subtle, #f8fafc);
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  flex-wrap: wrap;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  color: #64748b;
+  background: transparent;
+  transition: all 0.2s ease;
+  user-select: none;
+  border: 1px solid transparent;
+}
+
+.radio-label:hover {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+}
+
+.radio-label.active {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+}
+
+.radio-label input[type="radio"] {
+  accent-color: #ffffff;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
 }

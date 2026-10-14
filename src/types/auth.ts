@@ -1,7 +1,7 @@
 export type UserRole = "doctor" | "patient" | "admin" | "receptionist";
 
 export interface User {
-  id?: string;
+  id?: string | number;
   name?: string;
   username: string;
   email?: string;
@@ -32,6 +32,8 @@ export interface SignupResponse {
   username: string;
   message?: string;
   user?: User;
+  user_id?: number | string;
+  id?: number | string;
 }
 
 export interface ApiErrorResponse {
