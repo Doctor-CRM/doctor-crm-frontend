@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
 import { adminService } from "../service/adminService";
 import { getApiErrorMessage } from "../service/api";
+import { getEffectiveUsername } from "../utils/roleUtils";
 import "./DoctorDashboard.css";
 import logoImg from "../assets/Hospital CRM Healthcare Logo (1).png";
 import type { PatientProfile } from "../types/admin";
@@ -30,9 +31,10 @@ interface PrescriptionRecord {
 export const DoctorDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+  const effectiveUsername = getEffectiveUsername(user);
   const [activeTab, setActiveTab] = useState<"appointments" | "prescription" | "patients">("appointments");
   const [isAvailable, setIsAvailable] = useState<boolean>(true);
-  const [searchQuery, setSearchQuery] = useState<string>(";");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Dynamic API Patients List
   const [patientsList, setPatientsList] = useState<PatientProfile[]>([]);
@@ -130,9 +132,15 @@ export const DoctorDashboard: React.FC = () => {
             </button>
           </div>
 
-          <div className="profile-info">
-            <span className="profile-name">{user?.name || user?.username || "Dr. Practitioner"}</span>
-            <span className="profile-role">Doctor</span>
+          <div className="logged-in-profile-badge">
+            <div className="profile-badge-avatar doctor">
+              {effectiveUsername ? effectiveUsername.charAt(0).toUpperCase() : "D"}
+            </div>
+            <div className="profile-badge-text">
+              <span className="profile-badge-label">Logged In</span>
+              <span className="profile-badge-username">@{effectiveUsername || "doctor"}</span>
+            </div>
+            <span className="profile-badge-role doctor">Doctor</span>
           </div>
 
           <button onClick={handleLogout} className="dashboard-logout-btn">
@@ -180,6 +188,16 @@ export const DoctorDashboard: React.FC = () => {
               <strong>{appointments.filter((a) => a.status === "Completed").length}</strong>
             </div>
           </div>
+
+          <div className="sidebar-user-footer">
+            <div className="sidebar-user-avatar doctor">
+              {effectiveUsername ? effectiveUsername.charAt(0).toUpperCase() : "D"}
+            </div>
+            <div className="sidebar-user-info">
+              <span className="sidebar-user-label">Logged In Doctor</span>
+              <span className="sidebar-user-username">@{effectiveUsername || "doctor"}</span>
+            </div>
+          </div>
         </aside>
 
         {/* Main Workspace Content */}
@@ -215,7 +233,12 @@ export const DoctorDashboard: React.FC = () => {
           {activeTab === "appointments" && (
             <section className="dashboard-section">
               <div className="section-header">
-                <h3>OPD Patient Queue & Consultations</h3>
+                <div>
+                  <h3>OPD Patient Queue & Consultations</h3>
+                  <div className="tab-account-badge">
+                    👨‍⚕️ Doctor Session: <strong>@{effectiveUsername || "doctor"}</strong>
+                  </div>
+                </div>
                 <input
                   type="text"
                   placeholder="Search patient or Token ID..."
@@ -305,7 +328,12 @@ export const DoctorDashboard: React.FC = () => {
           {/* Tab 2: Write Digital Prescription */}
           {activeTab === "prescription" && (
             <section className="dashboard-section form-section">
-              <h3>Create Digital Prescription</h3>
+              <div>
+                <h3>Create Digital Prescription</h3>
+                <div className="tab-account-badge">
+                  ✍️ Prescribing Physician: <strong>@{effectiveUsername || "doctor"}</strong>
+                </div>
+              </div>
 
               {prescSuccessMsg && (
                 <div className="alert-banner success-alert">
@@ -399,7 +427,12 @@ export const DoctorDashboard: React.FC = () => {
           {activeTab === "patients" && (
             <section className="dashboard-section">
               <div className="section-header">
-                <h3>Registered Patients Directory</h3>
+                <div>
+                  <h3>Registered Patients Directory</h3>
+                  <div className="tab-account-badge">
+                    📁 Accessing Records as: <strong>@{effectiveUsername || "doctor"}</strong>
+                  </div>
+                </div>
               </div>
 
               {isLoadingPatients ? (

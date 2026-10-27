@@ -4,6 +4,7 @@ import { useAuthStore } from "../store/useAuthStore";
 import { adminService } from "../service/adminService";
 import { authService } from "../service/authService";
 import { getApiErrorMessage } from "../service/api";
+import { getEffectiveUsername } from "../utils/roleUtils";
 import "./AdminDashboard.css";
 import type { UserRole } from "../types/auth";
 import type {
@@ -11,10 +12,9 @@ import type {
   SummaryMetrics,
   DoctorProfile,
   PatientProfile,
+  RoleUser,
 } from "../types/admin";
 import logoImg from "../assets/Hospital CRM Healthcare Logo (1).png";
-
-
 
 const INITIAL_SUMMARY: SummaryMetrics = {
   total_users: 0,
@@ -26,29 +26,56 @@ const INITIAL_SUMMARY: SummaryMetrics = {
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user, logout, updateUsername } = useAuthStore();
+  const effectiveUsername = getEffectiveUsername(user);
 
-  // Tab State: "users" | "doctors" | "patients" | "addDoctor" | "addPatient" | "addUser" | "logs"
+  // Tab State: "doctors" | "patients" | "receptionists" | "changeUsername" | "users" | "addDoctor" | "addPatient" | "addUser"
   const [activeTab, setActiveTab] = useState<
-    "users" | "doctors" | "patients" | "addDoctor" | "addPatient" | "addUser" | "logs"
+    | "users"
+    | "doctors"
+    | "patients"
+    | "receptionists"
+    | "changeUsername"
+    | "addDoctor"
+    | "addPatient"
+    | "addUser"
   >("users");
 
-  // Pure API Data States - NO HARDCODED DUMMY DATA
+  // Sub-view toggles for Doctors and Patients tabs
+  const [doctorViewMode, setDoctorViewMode] = useState<"users" | "profiles">("users");
+  const [patientViewMode, setPatientViewMode] = useState<"users" | "profiles">("users");
+
+  // Pure API Data States
   const [summary, setSummary] = useState<SummaryMetrics>(INITIAL_SUMMARY);
   const [usersList, setUsersList] = useState<AdminUser[]>([]);
+
+  // 1. Doctors from GET /api/v1/users/doctors
+  const [doctorsUsersList, setDoctorsUsersList] = useState<RoleUser[]>([]);
+  const [isLoadingDoctorsUsers, setIsLoadingDoctorsUsers] = useState<boolean>(false);
+  const [doctorSearchQuery, setDoctorSearchQuery] = useState<string>("");
+
+  // 2. Patients from GET /api/v1/users/patients
+  const [patientsUsersList, setPatientsUsersList] = useState<RoleUser[]>([]);
+  const [isLoadingPatientsUsers, setIsLoadingPatientsUsers] = useState<boolean>(false);
+  const [patientSearchQuery, setPatientSearchQuery] = useState<string>("");
+
+  // 3. Receptionists from GET /api/v1/users/receptionists
+  const [receptionistsList, setReceptionistsList] = useState<RoleUser[]>([]);
+  const [isLoadingReceptionists, setIsLoadingReceptionists] = useState<boolean>(false);
+  const [receptionistSearchQuery, setReceptionistSearchQuery] = useState<string>("");
+
+  // Clinical profile data lists
   const [doctorsList, setDoctorsList] = useState<DoctorProfile[]>([]);
   const [patientsList, setPatientsList] = useState<PatientProfile[]>([]);
-
+  const [isLoadingDoctorProfiles, setIsLoadingDoctorProfiles] = useState<boolean>(false);
+  const [isLoadingPatientProfiles, setIsLoadingPatientProfiles] = useState<boolean>(false);
 
   // Status & Feedback States
   const [healthStatus, setHealthStatus] = useState<"checking" | "online" | "offline">("checking");
   const [dbHealthStatus, setDbHealthStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [lastSyncedTime, setLastSyncedTime] = useState<string>("");
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-
   const [isLoadingUsers, setIsLoadingUsers] = useState<boolean>(true);
-  const [isLoadingDoctors, setIsLoadingDoctors] = useState<boolean>(false);
-  const [isLoadingPatients, setIsLoadingPatients] = useState<boolean>(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | number | null>(null);
 
   const [toast, setToast] = useState<{
@@ -56,16 +83,14 @@ export const AdminDashboard: React.FC = () => {
     type: "success" | "error" | "info";
   } | null>(null);
 
-  // Filter States
+  // Filter States for All Users table
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [doctorSearchQuery, setDoctorSearchQuery] = useState<string>("");
-  const [patientSearchQuery, setPatientSearchQuery] = useState<string>("");
 
   // Mode state for Tab "addUser": "register" | "editUsername" | "editPassword"
   const [userFormMode, setUserFormMode] = useState<"register" | "editUsername" | "editPassword">("register");
 
-  // Generic New User Signup State (Mode 1)
+  // Generic New User Signup State (Mode 1 in addUser)
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
@@ -73,21 +98,33 @@ export const AdminDashboard: React.FC = () => {
   const [isSubmittingNewUser, setIsSubmittingNewUser] = useState(false);
   const [userCreatedMsg, setUserCreatedMsg] = useState("");
 
-  // Mode 2: Edit Username & Profile State
+  // Mode 2 in addUser: Edit Username & Profile State
   const [editOldUsername, setEditOldUsername] = useState("");
   const [editNewName, setEditNewName] = useState("");
   const [editNewEmail, setEditNewEmail] = useState("");
   const [editNewUsername, setEditNewUsername] = useState("");
   const [isSubmittingUsernameEdit, setIsSubmittingUsernameEdit] = useState(false);
 
-  // Mode 3: Edit Password & Role State
+  // Mode 3 in addUser: Edit Password & Role State
   const [editPassTargetUsername, setEditPassTargetUsername] = useState("");
   const [editNewPasswordVal, setEditNewPasswordVal] = useState("");
   const [editPassRole, setEditPassRole] = useState<UserRole | string>("doctor");
   const [editPassStatus, setEditPassStatus] = useState("activate");
   const [isSubmittingPassEdit, setIsSubmittingPassEdit] = useState(false);
 
-  // --- DOCTOR ENTRY FORM STATE (COMPLETE ALL COLUMNS) ---
+  // 4. Change Username Dedicated Tab State (POST /api/v1/users/changeusername)
+  const [changeUserTargetUsername, setChangeUserTargetUsername] = useState<string>("");
+  const [changeUserNewUsername, setChangeUserNewUsername] = useState<string>("");
+  const [isSubmittingChangeUserTab, setIsSubmittingChangeUserTab] = useState<boolean>(false);
+
+  // 5. Change Username Quick Modal State
+  const [usernameModalOpen, setUsernameModalOpen] = useState<boolean>(false);
+  const [modalOldUsername, setModalOldUsername] = useState<string>("");
+  const [modalNewUsername, setModalNewUsername] = useState<string>("");
+  const [modalTargetName, setModalTargetName] = useState<string>("");
+  const [isSubmittingModalUsername, setIsSubmittingModalUsername] = useState<boolean>(false);
+
+  // --- DOCTOR ENTRY FORM STATE ---
   const [docName, setDocName] = useState("");
   const [docEmail, setDocEmail] = useState("");
   const [docPassword, setDocPassword] = useState("");
@@ -100,7 +137,7 @@ export const AdminDashboard: React.FC = () => {
   const [docAvailability, setDocAvailability] = useState("available");
   const [isSubmittingDoc, setIsSubmittingDoc] = useState(false);
 
-  // --- PATIENT ENTRY FORM STATE (COMPLETE ALL COLUMNS) ---
+  // --- PATIENT ENTRY FORM STATE ---
   const [patName, setPatName] = useState("");
   const [patEmail, setPatEmail] = useState("");
   const [patPassword, setPatPassword] = useState("");
@@ -111,7 +148,7 @@ export const AdminDashboard: React.FC = () => {
   const [patAddress, setPatAddress] = useState("");
   const [isSubmittingPat, setIsSubmittingPat] = useState(false);
 
-  // --- EDIT DOCTOR MODAL STATE ---
+  // --- EDIT DOCTOR PROFILE MODAL STATE ---
   const [editingDoctor, setEditingDoctor] = useState<DoctorProfile | null>(null);
   const [editDocName, setEditDocName] = useState("");
   const [editDocGender, setEditDocGender] = useState("Male");
@@ -123,7 +160,7 @@ export const AdminDashboard: React.FC = () => {
   const [editDocAvailability, setEditDocAvailability] = useState("available");
   const [isSavingDoctorEdit, setIsSavingDoctorEdit] = useState(false);
 
-  // --- EDIT PATIENT MODAL STATE ---
+  // --- EDIT PATIENT PROFILE MODAL STATE ---
   const [editingPatient, setEditingPatient] = useState<PatientProfile | null>(null);
   const [editPatName, setEditPatName] = useState("");
   const [editPatAge, setEditPatAge] = useState<number>(0);
@@ -133,13 +170,11 @@ export const AdminDashboard: React.FC = () => {
   const [editPatAddress, setEditPatAddress] = useState("");
   const [isSavingPatientEdit, setIsSavingPatientEdit] = useState(false);
 
-
-
   const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
     setToast({ message, type });
     setTimeout(() => {
       setToast(null);
-    }, 4000);
+    }, 4500);
   };
 
   // Fetch Backend & DB Health Status (GET /api/v1/health)
@@ -147,10 +182,9 @@ export const AdminDashboard: React.FC = () => {
     try {
       const res = await adminService.checkHealth();
       setHealthStatus("online");
-
       const isDbConnected = res.db_status === "connected" || !res.db_status;
       setDbHealthStatus(isDbConnected ? "connected" : "disconnected");
-    } catch (err) {
+    } catch {
       setHealthStatus("offline");
       setDbHealthStatus("disconnected");
     }
@@ -171,15 +205,57 @@ export const AdminDashboard: React.FC = () => {
       }
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
-      showToast(`Failed to load users from DB: ${errMsg}`, "error");
+      showToast(`Failed to load users: ${errMsg}`, "error");
     } finally {
       setIsLoadingUsers(false);
     }
   }, []);
 
-  // Fetch Doctors Data List (GET /api/v1/doctor/data)
+  // 1. Fetch All Doctors (GET /api/v1/users/doctors)
+  const fetchAllDoctors = useCallback(async () => {
+    setIsLoadingDoctorsUsers(true);
+    try {
+      const doctors = await adminService.getAllDoctors();
+      setDoctorsUsersList(doctors || []);
+    } catch (error) {
+      const errMsg = getApiErrorMessage(error);
+      showToast(`Failed to load doctors: ${errMsg}`, "error");
+    } finally {
+      setIsLoadingDoctorsUsers(false);
+    }
+  }, []);
+
+  // 2. Fetch All Patients (GET /api/v1/users/patients)
+  const fetchAllPatients = useCallback(async () => {
+    setIsLoadingPatientsUsers(true);
+    try {
+      const patients = await adminService.getAllPatients();
+      setPatientsUsersList(patients || []);
+    } catch (error) {
+      const errMsg = getApiErrorMessage(error);
+      showToast(`Failed to load patients: ${errMsg}`, "error");
+    } finally {
+      setIsLoadingPatientsUsers(false);
+    }
+  }, []);
+
+  // 3. Fetch All Receptionists (GET /api/v1/users/receptionists)
+  const fetchAllReceptionists = useCallback(async () => {
+    setIsLoadingReceptionists(true);
+    try {
+      const receptionists = await adminService.getAllReceptionists();
+      setReceptionistsList(receptionists || []);
+    } catch (error) {
+      const errMsg = getApiErrorMessage(error);
+      showToast(`Failed to load receptionists: ${errMsg}`, "error");
+    } finally {
+      setIsLoadingReceptionists(false);
+    }
+  }, []);
+
+  // Fetch Doctor Profiles (GET /api/v1/doctor/data)
   const fetchDoctorProfiles = useCallback(async () => {
-    setIsLoadingDoctors(true);
+    setIsLoadingDoctorProfiles(true);
     try {
       const doctors = await adminService.getDoctorData();
       setDoctorsList(doctors || []);
@@ -187,13 +263,13 @@ export const AdminDashboard: React.FC = () => {
       const errMsg = getApiErrorMessage(error);
       showToast(`Failed to load doctor profiles: ${errMsg}`, "error");
     } finally {
-      setIsLoadingDoctors(false);
+      setIsLoadingDoctorProfiles(false);
     }
   }, []);
 
-  // Fetch Patients Data List (GET /api/v1/patient/data)
+  // Fetch Patient Profiles (GET /api/v1/patient/data)
   const fetchPatientProfiles = useCallback(async () => {
-    setIsLoadingPatients(true);
+    setIsLoadingPatientProfiles(true);
     try {
       const patients = await adminService.getPatientData();
       setPatientsList(patients || []);
@@ -201,42 +277,169 @@ export const AdminDashboard: React.FC = () => {
       const errMsg = getApiErrorMessage(error);
       showToast(`Failed to load patient profiles: ${errMsg}`, "error");
     } finally {
-      setIsLoadingPatients(false);
+      setIsLoadingPatientProfiles(false);
     }
   }, []);
 
-  // Manual Refresh Handler (Bypasses Cache & Refetches All APIs)
+  // Manual Refresh Handler
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await checkBackendHealth();
-      await fetchUsersAndSummary();
-      await fetchDoctorProfiles();
-      await fetchPatientProfiles();
+      await Promise.allSettled([
+        checkBackendHealth(),
+        fetchUsersAndSummary(),
+        fetchAllDoctors(),
+        fetchAllPatients(),
+        fetchAllReceptionists(),
+        fetchDoctorProfiles(),
+        fetchPatientProfiles(),
+      ]);
       const timeStr = new Date().toLocaleTimeString();
       setLastSyncedTime(timeStr);
-      showToast(`All API data refreshed from Database at ${timeStr}! 🔄`, "success");
+      showToast(`Data refreshed from Database at ${timeStr}! 🔄`, "success");
     } catch (err) {
       showToast(`Refresh failed: ${getApiErrorMessage(err)}`, "error");
     } finally {
       setIsRefreshing(false);
     }
-
-  }, [checkBackendHealth, fetchUsersAndSummary, fetchDoctorProfiles, fetchPatientProfiles]);
+  }, [
+    checkBackendHealth,
+    fetchUsersAndSummary,
+    fetchAllDoctors,
+    fetchAllPatients,
+    fetchAllReceptionists,
+    fetchDoctorProfiles,
+    fetchPatientProfiles,
+  ]);
 
   // Initial load
   useEffect(() => {
     checkBackendHealth();
     fetchUsersAndSummary();
+    fetchAllDoctors();
+    fetchAllPatients();
+    fetchAllReceptionists();
     fetchDoctorProfiles();
     fetchPatientProfiles();
     const initTime = new Date().toLocaleTimeString();
     setLastSyncedTime(initTime);
-  }, [checkBackendHealth, fetchUsersAndSummary, fetchDoctorProfiles, fetchPatientProfiles]);
+  }, [
+    checkBackendHealth,
+    fetchUsersAndSummary,
+    fetchAllDoctors,
+    fetchAllPatients,
+    fetchAllReceptionists,
+    fetchDoctorProfiles,
+    fetchPatientProfiles,
+  ]);
 
   const handleLogout = () => {
     logout();
     navigate("/login");
+  };
+
+  // Open Quick Change Username Modal
+  const handleOpenChangeUsernameModal = (targetUsername?: string, targetName?: string) => {
+    setModalOldUsername(targetUsername || "");
+    setModalNewUsername("");
+    setModalTargetName(targetName || targetUsername || "User");
+    setUsernameModalOpen(true);
+  };
+
+  // 4. Submit Change Username from Quick Modal (POST /api/v1/users/changeusername)
+  const handleModalChangeUsernameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const oldU = modalOldUsername.trim();
+    const newU = modalNewUsername.trim();
+
+    if (!oldU || !newU) {
+      showToast("Both current and new username are required.", "error");
+      return;
+    }
+    if (oldU === newU) {
+      showToast("New username must be different from current username.", "error");
+      return;
+    }
+
+    setIsSubmittingModalUsername(true);
+    try {
+      const res = await adminService.changeUsername({
+        username: oldU,
+        new_username: newU,
+      });
+
+      const successMsg = res?.message || `Username for "${oldU}" successfully changed to "${newU}"!`;
+      showToast(successMsg, "success");
+      setUsernameModalOpen(false);
+
+      if (oldU.toLowerCase() === effectiveUsername.toLowerCase()) {
+        updateUsername(newU);
+      }
+
+      // Refresh all lists
+      await Promise.allSettled([
+        fetchUsersAndSummary(),
+        fetchAllDoctors(),
+        fetchAllPatients(),
+        fetchAllReceptionists(),
+      ]);
+    } catch (error) {
+      const errMsg = getApiErrorMessage(error);
+      showToast(`Failed to update username: ${errMsg}`, "error");
+    } finally {
+      setIsSubmittingModalUsername(false);
+    }
+  };
+
+  // 4. Submit Change Username from Dedicated Tab (POST /api/v1/users/changeusername)
+  const handleChangeUsernameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const oldUsername = changeUserTargetUsername.trim();
+    const newUsername = changeUserNewUsername.trim();
+
+    if (!oldUsername) {
+      showToast("Please enter or select the current username.", "error");
+      return;
+    }
+    if (!newUsername) {
+      showToast("Please enter the new username.", "error");
+      return;
+    }
+    if (oldUsername === newUsername) {
+      showToast("New username must be different from the old username.", "error");
+      return;
+    }
+
+    setIsSubmittingChangeUserTab(true);
+    try {
+      const res = await adminService.changeUsername({
+        username: oldUsername,
+        new_username: newUsername,
+      });
+
+      const successMsg = res?.message || `Username successfully changed from "${oldUsername}" to "${newUsername}"!`;
+      showToast(successMsg, "success");
+
+      if (oldUsername.toLowerCase() === effectiveUsername.toLowerCase()) {
+        updateUsername(newUsername);
+      }
+
+      setChangeUserTargetUsername("");
+      setChangeUserNewUsername("");
+
+      // Refetch all lists
+      await Promise.allSettled([
+        fetchUsersAndSummary(),
+        fetchAllDoctors(),
+        fetchAllPatients(),
+        fetchAllReceptionists(),
+      ]);
+    } catch (error) {
+      const errMsg = getApiErrorMessage(error);
+      showToast(`Change username failed: ${errMsg}`, "error");
+    } finally {
+      setIsSubmittingChangeUserTab(false);
+    }
   };
 
   // Role Change Handler (POST /api/v1/user/update)
@@ -352,30 +555,46 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  // Mode 2: Update Username & Profile Details (POST /api/v1/user/update)
+  // Mode 2 in addUser: Update Username & Profile Details (POST /api/v1/users/changeusername)
   const handleUpdateUserProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editOldUsername) return;
+    const oldU = editOldUsername.trim();
+    const newU = editNewUsername.trim();
+    if (!oldU) return;
 
     setIsSubmittingUsernameEdit(true);
     try {
+      if (newU && newU !== oldU) {
+        await adminService.changeUsername({
+          username: oldU,
+          new_username: newU,
+        });
+      }
+
       const existingUser = usersList.find(
-        (u) => u.username === editOldUsername || u.email === editOldUsername
+        (u) => u.username === oldU || u.email === oldU
       );
 
-      await adminService.updateUser({
-        username: editNewUsername || editOldUsername,
-        name: editNewName || existingUser?.name || editOldUsername,
-        email: editNewEmail || existingUser?.email || `${editOldUsername}@hospital.com`,
-        role: existingUser?.role ? String(existingUser.role) : "doctor",
-        status: existingUser?.status || "activate",
-        action: existingUser?.action || "activate",
-      });
+      if (editNewName || editNewEmail) {
+        await adminService.updateUser({
+          username: newU || oldU,
+          name: editNewName || existingUser?.name || oldU,
+          email: editNewEmail || existingUser?.email || `${oldU}@hospital.com`,
+          role: existingUser?.role ? String(existingUser.role) : "doctor",
+          status: existingUser?.status || "activate",
+          action: existingUser?.action || "activate",
+        });
+      }
 
-      const successMsg = `Username & Profile for "${editOldUsername}" updated successfully in DB! 💾`;
+      const successMsg = `Username for "${oldU}" updated successfully in Database! 💾`;
       showToast(successMsg, "success");
 
-      await fetchUsersAndSummary();
+      await Promise.allSettled([
+        fetchUsersAndSummary(),
+        fetchAllDoctors(),
+        fetchAllPatients(),
+        fetchAllReceptionists(),
+      ]);
 
       setEditOldUsername("");
       setEditNewName("");
@@ -384,13 +603,13 @@ export const AdminDashboard: React.FC = () => {
       setActiveTab("users");
     } catch (error) {
       const errMsg = getApiErrorMessage(error);
-      showToast(`Profile update failed: ${errMsg}`, "error");
+      showToast(`Username update failed: ${errMsg}`, "error");
     } finally {
       setIsSubmittingUsernameEdit(false);
     }
   };
 
-  // Mode 3: Update Password & Role Details (POST /api/v1/user/update)
+  // Mode 3 in addUser: Update Password & Role Details (POST /api/v1/user/update)
   const handleUpdateUserPasswordAndRole = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editPassTargetUsername) return;
@@ -428,7 +647,7 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  // --- HANDLER: CREATE DOCTOR ENTRY (User Signup + Save Doctor Profile with ALL COLUMNS in DB) ---
+  // --- HANDLER: CREATE DOCTOR ENTRY ---
   const handleCreateDoctorEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!docName || !docEmail) return;
@@ -460,6 +679,7 @@ export const AdminDashboard: React.FC = () => {
       showToast(msg, "success");
 
       await fetchUsersAndSummary();
+      await fetchAllDoctors();
       await fetchDoctorProfiles();
 
       setDocName("");
@@ -481,7 +701,7 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  // --- HANDLER: CREATE PATIENT ENTRY (User Signup + Save Patient Profile with ALL COLUMNS in DB) ---
+  // --- HANDLER: CREATE PATIENT ENTRY ---
   const handleCreatePatientEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!patName || !patEmail) return;
@@ -511,6 +731,7 @@ export const AdminDashboard: React.FC = () => {
       showToast(msg, "success");
 
       await fetchUsersAndSummary();
+      await fetchAllPatients();
       await fetchPatientProfiles();
 
       setPatName("");
@@ -610,7 +831,7 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  // Filtered Lists
+  // Filtered Users
   const filteredUsers = usersList.filter((u) => {
     const matchesRole =
       roleFilter === "all" ||
@@ -622,7 +843,44 @@ export const AdminDashboard: React.FC = () => {
     return matchesRole && matchesQuery;
   });
 
-  const filteredDoctors = doctorsList.filter((d) => {
+  // Filtered Doctor Users (GET /api/v1/users/doctors)
+  const filteredDoctorUsers = doctorsUsersList.filter((doc) => {
+    if (!doctorSearchQuery.trim()) return true;
+    const q = doctorSearchQuery.toLowerCase();
+    return (
+      doc.name?.toLowerCase().includes(q) ||
+      doc.username?.toLowerCase().includes(q) ||
+      doc.email?.toLowerCase().includes(q) ||
+      String(doc.id).includes(q)
+    );
+  });
+
+  // Filtered Patient Users (GET /api/v1/users/patients)
+  const filteredPatientUsers = patientsUsersList.filter((pat) => {
+    if (!patientSearchQuery.trim()) return true;
+    const q = patientSearchQuery.toLowerCase();
+    return (
+      pat.name?.toLowerCase().includes(q) ||
+      pat.username?.toLowerCase().includes(q) ||
+      pat.email?.toLowerCase().includes(q) ||
+      String(pat.id).includes(q)
+    );
+  });
+
+  // Filtered Receptionists (GET /api/v1/users/receptionists)
+  const filteredReceptionists = receptionistsList.filter((rec) => {
+    if (!receptionistSearchQuery.trim()) return true;
+    const q = receptionistSearchQuery.toLowerCase();
+    return (
+      rec.name?.toLowerCase().includes(q) ||
+      rec.username?.toLowerCase().includes(q) ||
+      rec.email?.toLowerCase().includes(q) ||
+      String(rec.id).includes(q)
+    );
+  });
+
+  // Filtered Doctor Profiles
+  const filteredDoctorProfiles = doctorsList.filter((d) => {
     const q = doctorSearchQuery.toLowerCase();
     return (
       d.doctor_name.toLowerCase().includes(q) ||
@@ -632,7 +890,8 @@ export const AdminDashboard: React.FC = () => {
     );
   });
 
-  const filteredPatients = patientsList.filter((p) => {
+  // Filtered Patient Profiles
+  const filteredPatientProfiles = patientsList.filter((p) => {
     const q = patientSearchQuery.toLowerCase();
     return (
       p.patient_name.toLowerCase().includes(q) ||
@@ -642,31 +901,75 @@ export const AdminDashboard: React.FC = () => {
     );
   });
 
+  // Combined unique users for easy username selection
+  const allKnownUsers = Array.from(
+    new Map(
+      [...usersList, ...doctorsUsersList, ...patientsUsersList, ...receptionistsList]
+        .filter((u) => u && u.username)
+        .map((u) => [u.username, u])
+    ).values()
+  );
+
   return (
     <div className="dashboard-layout admin-theme">
-      {/* Top Navbar */}
+      {/* Top Navigation Bar */}
       <header className="dashboard-header">
-        <div className="brand-section" onClick={() => navigate("/")} style={{ cursor: "pointer" }}>
-          <img src={logoImg} alt="Hospital CRM Logo" style={{ height: "38px", width: "auto", objectFit: "contain", borderRadius: "6px" }} />
-          <div className="brand-badge admin-badge">⚙️ Admin Console</div>
-          <h2>Hospital CRM</h2>
+        <div className="brand-badge-container">
+          <img
+            src={logoImg}
+            alt="Hospital CRM Logo"
+            style={{ height: "36px", width: "auto", objectFit: "contain", borderRadius: "6px" }}
+          />
+          <div className="brand-badge admin-badge">🛡️ Admin Console</div>
         </div>
 
         <div className="user-profile-section">
+          {/* Health Status Indicator */}
+          <div className="system-health-badge">
+            <span
+              className={`health-dot ${healthStatus === "online" ? "online" : "offline"}`}
+            />
+            <span>
+              Server: <strong>{healthStatus === "online" ? "Online" : "Offline"}</strong>
+            </span>
+            <span style={{ margin: "0 4px", color: "#94a3b8" }}>|</span>
+            <span>
+              DB: <strong>{dbHealthStatus === "connected" ? "Connected 🟢" : "Disconnected 🔴"}</strong>
+              {lastSyncedTime && (
+                <span style={{ fontSize: "11px", color: "#64748b", marginLeft: "4px" }}>
+                  ({lastSyncedTime})
+                </span>
+              )}
+            </span>
+          </div>
+
+          {/* Quick Header Change Username Button */}
           <button
-            onClick={handleManualRefresh}
-            disabled={isRefreshing}
-            className="refresh-api-btn"
-            title={lastSyncedTime ? `Last synced at ${lastSyncedTime}` : "Click to refresh API data from Database"}
+            onClick={() => handleOpenChangeUsernameModal("")}
+            className="header-change-user-btn"
+            title="Change Username"
           >
-            {isRefreshing ? "⏳ Syncing..." : "🔄 Refresh Data"}
+            ✏️ Change Username
           </button>
 
-          <div className="profile-info">
-            <span className="profile-name">
-              {user?.name || user?.username || "Admin"}
-            </span>
-            <span className="profile-role">System Administrator</span>
+          <button
+            onClick={handleManualRefresh}
+            className="refresh-api-btn"
+            disabled={isRefreshing}
+            title="Refetch all data from Database"
+          >
+            {isRefreshing ? "Syncing..." : "🔄 Refresh"}
+          </button>
+
+          <div className="logged-in-profile-badge">
+            <div className="profile-badge-avatar admin">
+              {effectiveUsername ? effectiveUsername.charAt(0).toUpperCase() : "A"}
+            </div>
+            <div className="profile-badge-text">
+              <span className="profile-badge-label">Logged In</span>
+              <span className="profile-badge-username">@{effectiveUsername || "admin"}</span>
+            </div>
+            <span className="profile-badge-role admin">Admin</span>
           </div>
 
           <button onClick={handleLogout} className="dashboard-logout-btn">
@@ -683,27 +986,44 @@ export const AdminDashboard: React.FC = () => {
               className={`menu-item ${activeTab === "users" ? "active" : ""}`}
               onClick={() => setActiveTab("users")}
             >
-              👥 System Users List
+              👥 All System Users
             </button>
 
             <button
               className={`menu-item ${activeTab === "doctors" ? "active" : ""}`}
               onClick={() => {
                 setActiveTab("doctors");
-                if (doctorsList.length === 0) fetchDoctorProfiles();
+                if (doctorsUsersList.length === 0) fetchAllDoctors();
               }}
             >
-              👨‍⚕️ Doctor Profiles
+              👨‍⚕️ Doctors ({doctorsUsersList.length})
             </button>
 
             <button
               className={`menu-item ${activeTab === "patients" ? "active" : ""}`}
               onClick={() => {
                 setActiveTab("patients");
-                if (patientsList.length === 0) fetchPatientProfiles();
+                if (patientsUsersList.length === 0) fetchAllPatients();
               }}
             >
-              🧑‍🤝‍🧑 Patient Profiles
+              🧑‍🤝‍🧑 Patients ({patientsUsersList.length})
+            </button>
+
+            <button
+              className={`menu-item ${activeTab === "receptionists" ? "active" : ""}`}
+              onClick={() => {
+                setActiveTab("receptionists");
+                if (receptionistsList.length === 0) fetchAllReceptionists();
+              }}
+            >
+              🏨 Receptionists ({receptionistsList.length})
+            </button>
+
+            <button
+              className={`menu-item ${activeTab === "changeUsername" ? "active" : ""}`}
+              onClick={() => setActiveTab("changeUsername")}
+            >
+              ✏️ Change Username
             </button>
 
             <button
@@ -724,32 +1044,34 @@ export const AdminDashboard: React.FC = () => {
               className={`menu-item ${activeTab === "addUser" ? "active" : ""}`}
               onClick={() => setActiveTab("addUser")}
             >
-              ➕ Register & Edit System User
+              ➕ Register & Edit User
             </button>
-
-
           </nav>
 
           <div className="quick-stats-box">
             <h4>Detail</h4>
             <div className="stat-mini">
               <span>Total DB Users:</span>
-              <strong>{summary.total_users}</strong>
+              <strong>{summary.total_users || usersList.length}</strong>
             </div>
             <div className="stat-mini">
               <span>Total Doctors:</span>
-              <strong>{summary.total_doctors}</strong>
+              <strong>{doctorsUsersList.length || summary.total_doctors}</strong>
             </div>
             <div className="stat-mini">
               <span>Total Patients:</span>
-              <strong>{summary.total_patients}</strong>
+              <strong>{patientsUsersList.length || summary.total_patients}</strong>
+            </div>
+            <div className="stat-mini">
+              <span>Total Receptionists:</span>
+              <strong>{receptionistsList.length || summary.total_recipients || 0}</strong>
             </div>
             <div className="stat-mini">
               <span>Total Admins:</span>
               <strong>{summary.total_admins}</strong>
             </div>
             <div className="stat-mini">
-              <span>API Service:</span>
+              <span>Server Status:</span>
               <strong style={{ color: healthStatus === "online" ? "#16a34a" : "#dc2626" }}>
                 {healthStatus === "online" ? "Active 🟢" : "Disconnected 🔴"}
               </strong>
@@ -761,11 +1083,68 @@ export const AdminDashboard: React.FC = () => {
               </strong>
             </div>
           </div>
+
+          <div className="sidebar-user-footer">
+            <div className="sidebar-user-avatar admin">
+              {effectiveUsername ? effectiveUsername.charAt(0).toUpperCase() : "A"}
+            </div>
+            <div className="sidebar-user-info">
+              <span className="sidebar-user-label">Active Admin</span>
+              <span className="sidebar-user-username">@{effectiveUsername || "admin"}</span>
+            </div>
+          </div>
         </aside>
 
-        {/* Main Workspace Content */}
-        <main className="dashboard-main">
-          {/* Toast Notification Banner */}
+        {/* Main Content Area */}
+        <main className="dashboard-main-content">
+          {/* Quick Actions Bar (Top Pill Tabs for Quick Mobile & Desktop Switching) */}
+          <div className="quick-actions-bar">
+            <button
+              className={`quick-action-pill ${activeTab === "users" ? "active" : ""}`}
+              onClick={() => setActiveTab("users")}
+            >
+              👥 All Users <span className="pill-badge">{summary.total_users || usersList.length}</span>
+            </button>
+
+            <button
+              className={`quick-action-pill ${activeTab === "doctors" ? "active" : ""}`}
+              onClick={() => {
+                setActiveTab("doctors");
+                if (doctorsUsersList.length === 0) fetchAllDoctors();
+              }}
+            >
+              👨‍⚕️ Doctors <span className="pill-badge">{doctorsUsersList.length}</span>
+            </button>
+
+            <button
+              className={`quick-action-pill ${activeTab === "patients" ? "active" : ""}`}
+              onClick={() => {
+                setActiveTab("patients");
+                if (patientsUsersList.length === 0) fetchAllPatients();
+              }}
+            >
+              🧑‍🤝‍🧑 Patients <span className="pill-badge">{patientsUsersList.length}</span>
+            </button>
+
+            <button
+              className={`quick-action-pill ${activeTab === "receptionists" ? "active" : ""}`}
+              onClick={() => {
+                setActiveTab("receptionists");
+                if (receptionistsList.length === 0) fetchAllReceptionists();
+              }}
+            >
+              🏨 Receptionists <span className="pill-badge">{receptionistsList.length}</span>
+            </button>
+
+            <button
+              className={`quick-action-pill ${activeTab === "changeUsername" ? "active" : ""}`}
+              onClick={() => setActiveTab("changeUsername")}
+            >
+              ✏️ Change Username
+            </button>
+          </div>
+
+          {/* Toast Notification Alert */}
           {toast && (
             <div className={`admin-toast-alert ${toast.type}`}>
               <span>{toast.message}</span>
@@ -783,7 +1162,7 @@ export const AdminDashboard: React.FC = () => {
             <div className="stat-card blue">
               <div className="stat-icon">👨‍⚕️</div>
               <div className="stat-content">
-                <h3>{summary.total_doctors}</h3>
+                <h3>{doctorsUsersList.length || summary.total_doctors}</h3>
                 <p>Total Doctors</p>
               </div>
             </div>
@@ -791,8 +1170,16 @@ export const AdminDashboard: React.FC = () => {
             <div className="stat-card green">
               <div className="stat-icon">🧑‍🤝‍🧑</div>
               <div className="stat-content">
-                <h3>{summary.total_patients}</h3>
+                <h3>{patientsUsersList.length || summary.total_patients}</h3>
                 <p>Total Patients</p>
+              </div>
+            </div>
+
+            <div className="stat-card pink">
+              <div className="stat-icon">🏨</div>
+              <div className="stat-content">
+                <h3>{receptionistsList.length || summary.total_recipients || 0}</h3>
+                <p>Total Receptionists</p>
               </div>
             </div>
 
@@ -807,20 +1194,23 @@ export const AdminDashboard: React.FC = () => {
             <div className="stat-card orange">
               <div className="stat-icon">📊</div>
               <div className="stat-content">
-                <h3>{summary.total_users}</h3>
+                <h3>{summary.total_users || usersList.length}</h3>
                 <p>Total Registered Users</p>
               </div>
             </div>
           </div>
 
-          {/* TAB 1: System Users Management */}
+          {/* TAB 1: All System Users Management */}
           {activeTab === "users" && (
             <section className="dashboard-section">
               <div className="section-header">
                 <div>
                   <h3>System Users Management</h3>
+                  <div className="tab-account-badge" style={{ marginBottom: "6px" }}>
+                    🛡️ Admin Session: <strong>@{effectiveUsername || "admin"}</strong>
+                  </div>
                   <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                    Change user roles directly via dropdown or activate/disable user access with API.
+                    Change user roles directly via dropdown, toggle active/disabled status, or update username.
                   </p>
                 </div>
 
@@ -851,7 +1241,7 @@ export const AdminDashboard: React.FC = () => {
 
               {isLoadingUsers ? (
                 <div className="table-loading-container">
-                  Loading users & metrics from Database API...
+                  Loading system users...
                 </div>
               ) : (
                 <div className="table-responsive">
@@ -862,7 +1252,7 @@ export const AdminDashboard: React.FC = () => {
                         <th>Name</th>
                         <th>Username</th>
                         <th>Email</th>
-                        <th>Role (Change via Dropdown)</th>
+                        <th>Role</th>
                         <th>Status</th>
                         <th>Joined Date</th>
                         <th>Action</th>
@@ -893,7 +1283,6 @@ export const AdminDashboard: React.FC = () => {
                               </td>
                               <td>{u.email}</td>
 
-                              {/* Role Dropdown Column */}
                               <td>
                                 <select
                                   value={u.role.toLowerCase()}
@@ -911,7 +1300,6 @@ export const AdminDashboard: React.FC = () => {
                                 </select>
                               </td>
 
-                              {/* Status Column */}
                               <td>
                                 <span
                                   className={
@@ -926,21 +1314,30 @@ export const AdminDashboard: React.FC = () => {
 
                               <td>{u.join_date || u.joinedDate || "N/A"}</td>
 
-                              {/* Action Button Column */}
                               <td>
-                                <button
-                                  className={`action-btn ${
-                                    isActive ? "btn-disable" : "btn-activate"
-                                  }`}
-                                  disabled={isUpdating}
-                                  onClick={() => handleToggleAction(u)}
-                                >
-                                  {isUpdating
-                                    ? "Saving..."
-                                    : isActive
-                                    ? "Disable"
-                                    : "Activate"}
-                                </button>
+                                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                  <button
+                                    className={`action-btn ${
+                                      isActive ? "btn-disable" : "btn-activate"
+                                    }`}
+                                    disabled={isUpdating}
+                                    onClick={() => handleToggleAction(u)}
+                                  >
+                                    {isUpdating
+                                      ? "Saving..."
+                                      : isActive
+                                      ? "Disable"
+                                      : "Activate"}
+                                  </button>
+
+                                  <button
+                                    className="btn-change-username"
+                                    onClick={() => handleOpenChangeUsernameModal(u.username, u.name)}
+                                    title="Change Username"
+                                  >
+                                    ✏️ Username
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -953,18 +1350,41 @@ export const AdminDashboard: React.FC = () => {
             </section>
           )}
 
-          {/* TAB 2: Doctor Profiles Directory */}
+          {/* TAB 2: Doctors Directory (GET /api/v1/users/doctors) */}
           {activeTab === "doctors" && (
             <section className="dashboard-section">
               <div className="section-header">
                 <div>
-                  <h3>Doctor Profiles & Directory</h3>
+                  <h3>👨‍⚕️ Doctors Management</h3>
+                  <div className="tab-account-badge" style={{ marginBottom: "6px" }}>
+                    🛡️ Admin Session: <strong>@{effectiveUsername || "admin"}</strong>
+                  </div>
                   <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                    View detailed profiles and medical specialties of registered doctors.
+                    Manage registered hospital doctors and clinical profiles.
                   </p>
                 </div>
 
                 <div className="filter-controls">
+                  <div style={{ display: "flex", gap: "4px", background: "#f1f5f9", padding: "3px", borderRadius: "8px" }}>
+                    <button
+                      className={`action-btn ${doctorViewMode === "users" ? "btn-activate" : ""}`}
+                      style={{ padding: "6px 12px", fontSize: "12px", background: doctorViewMode === "users" ? "#2563eb" : "transparent", color: doctorViewMode === "users" ? "#fff" : "#475569" }}
+                      onClick={() => setDoctorViewMode("users")}
+                    >
+                      Doctors List ({doctorsUsersList.length})
+                    </button>
+                    <button
+                      className={`action-btn ${doctorViewMode === "profiles" ? "btn-activate" : ""}`}
+                      style={{ padding: "6px 12px", fontSize: "12px", background: doctorViewMode === "profiles" ? "#2563eb" : "transparent", color: doctorViewMode === "profiles" ? "#fff" : "#475569" }}
+                      onClick={() => {
+                        setDoctorViewMode("profiles");
+                        if (doctorsList.length === 0) fetchDoctorProfiles();
+                      }}
+                    >
+                      Clinical Profiles ({doctorsList.length})
+                    </button>
+                  </div>
+
                   <button
                     className="submit-presc-btn"
                     onClick={() => setActiveTab("addDoctor")}
@@ -975,7 +1395,7 @@ export const AdminDashboard: React.FC = () => {
 
                   <input
                     type="text"
-                    placeholder="Search doctor by name, specialty, contact..."
+                    placeholder="Search doctor by name, username, email..."
                     value={doctorSearchQuery}
                     onChange={(e) => setDoctorSearchQuery(e.target.value)}
                     className="table-search-input"
@@ -984,93 +1404,171 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {isLoadingDoctors ? (
-                <div className="table-loading-container">
-                  Loading Doctor profiles from API...
-                </div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Doc ID</th>
-                        <th>User ID</th>
-                        <th>Doctor Name</th>
-                        <th>Gender</th>
-                        <th>Contact Number</th>
-                        <th>Specialty / Type</th>
-                        <th>Experience</th>
-                        <th>Consultation Fee</th>
-                        <th>Abilities / Skills</th>
-                        <th>Availability</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredDoctors.length === 0 ? (
+              {doctorViewMode === "users" ? (
+                isLoadingDoctorsUsers ? (
+                  <div className="table-loading-container">
+                    Loading doctors directory...
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
                         <tr>
-                          <td colSpan={11} className="empty-state">
-                            No doctor profiles found in Database.
-                          </td>
+                          <th>ID</th>
+                          <th>Doctor Name</th>
+                          <th>Username</th>
+                          <th>Email</th>
+                          <th>Role</th>
+                          <th>Actions</th>
                         </tr>
-                      ) : (
-                        filteredDoctors.map((doc) => (
-                          <tr key={doc.id}>
-                            <td><strong>#DOC-{doc.id}</strong></td>
-                            <td>#{doc.user_id}</td>
-                            <td><strong>{doc.doctor_name}</strong></td>
-                            <td>{doc.gender || "Male"}</td>
-                            <td><code>{doc.contact_number || "N/A"}</code></td>
-                            <td>
-                              <span className="pill-tag role-doctor">
-                                {doc.doctor_type}
-                              </span>
-                            </td>
-                            <td>{doc.experience_years} Years</td>
-                            <td><strong>₹{doc.consultation_fee}</strong></td>
-                            <td>{doc.doctor_abilities}</td>
-                            <td>
-                              <span
-                                className={`badge-availability ${
-                                  doc.availability_status === "available"
-                                    ? "available"
-                                    : "unavailable"
-                                }`}
-                              >
-                                {doc.availability_status.toUpperCase()}
-                              </span>
-                            </td>
-                            <td>
-                              <button
-                                className="edit-btn"
-                                onClick={() => handleStartEditDoctor(doc)}
-                                title="Edit Doctor Profile Details"
-                              >
-                                ✏️ Edit
-                              </button>
+                      </thead>
+                      <tbody>
+                        {filteredDoctorUsers.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="empty-state">
+                              No doctors found in directory.
                             </td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                        ) : (
+                          filteredDoctorUsers.map((doc) => (
+                            <tr key={doc.id}>
+                              <td><strong>#{doc.id}</strong></td>
+                              <td><strong>{doc.name}</strong></td>
+                              <td><code>{doc.username}</code></td>
+                              <td>{doc.email}</td>
+                              <td>
+                                <span className="pill-tag role-doctor">
+                                  {doc.role?.toUpperCase() || "DOCTOR"}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ display: "flex", gap: "8px" }}>
+                                  <button
+                                    className="btn-change-username"
+                                    onClick={() => handleOpenChangeUsernameModal(doc.username, doc.name)}
+                                    title="Change Username"
+                                  >
+                                    ✏️ Change Username
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : (
+                isLoadingDoctorProfiles ? (
+                  <div className="table-loading-container">
+                    Loading doctor profiles...
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Doc ID</th>
+                          <th>User ID</th>
+                          <th>Doctor Name</th>
+                          <th>Gender</th>
+                          <th>Contact</th>
+                          <th>Specialty</th>
+                          <th>Experience</th>
+                          <th>Fee</th>
+                          <th>Availability</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredDoctorProfiles.length === 0 ? (
+                          <tr>
+                            <td colSpan={10} className="empty-state">
+                              No clinical doctor profiles found in Database.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredDoctorProfiles.map((doc) => (
+                            <tr key={doc.id}>
+                              <td><strong>#DOC-{doc.id}</strong></td>
+                              <td>#{doc.user_id}</td>
+                              <td><strong>{doc.doctor_name}</strong></td>
+                              <td>{doc.gender || "Male"}</td>
+                              <td><code>{doc.contact_number || "N/A"}</code></td>
+                              <td>
+                                <span className="pill-tag role-doctor">
+                                  {doc.doctor_type}
+                                </span>
+                              </td>
+                              <td>{doc.experience_years} Years</td>
+                              <td><strong>₹{doc.consultation_fee}</strong></td>
+                              <td>
+                                <span
+                                  className={`badge-availability ${
+                                    doc.availability_status === "available"
+                                      ? "available"
+                                      : "unavailable"
+                                  }`}
+                                >
+                                  {doc.availability_status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td>
+                                <button
+                                  className="edit-btn"
+                                  onClick={() => handleStartEditDoctor(doc)}
+                                  title="Edit Clinical Details"
+                                >
+                                  ✏️ Edit
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )
               )}
             </section>
           )}
 
-          {/* TAB 3: Patient Profiles Directory */}
+          {/* TAB 2: Patients Directory (GET /api/v1/users/patients) */}
           {activeTab === "patients" && (
             <section className="dashboard-section">
               <div className="section-header">
                 <div>
-                  <h3>Patient Profiles Directory</h3>
+                  <h3>🧑‍🤝‍🧑 Patients Management</h3>
+                  <div className="tab-account-badge" style={{ marginBottom: "6px" }}>
+                    🛡️ Admin Session: <strong>@{effectiveUsername || "admin"}</strong>
+                  </div>
                   <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
-                    Access patient records, contact details, and medical history.
+                    Manage registered hospital patients and medical profiles.
                   </p>
                 </div>
 
                 <div className="filter-controls">
+                  <div style={{ display: "flex", gap: "4px", background: "#f1f5f9", padding: "3px", borderRadius: "8px" }}>
+                    <button
+                      className={`action-btn ${patientViewMode === "users" ? "btn-activate" : ""}`}
+                      style={{ padding: "6px 12px", fontSize: "12px", background: patientViewMode === "users" ? "#2563eb" : "transparent", color: patientViewMode === "users" ? "#fff" : "#475569" }}
+                      onClick={() => setPatientViewMode("users")}
+                    >
+                      Patients List ({patientsUsersList.length})
+                    </button>
+                    <button
+                      className={`action-btn ${patientViewMode === "profiles" ? "btn-activate" : ""}`}
+                      style={{ padding: "6px 12px", fontSize: "12px", background: patientViewMode === "profiles" ? "#2563eb" : "transparent", color: patientViewMode === "profiles" ? "#fff" : "#475569" }}
+                      onClick={() => {
+                        setPatientViewMode("profiles");
+                        if (patientsList.length === 0) fetchPatientProfiles();
+                      }}
+                    >
+                      Clinical Profiles ({patientsList.length})
+                    </button>
+                  </div>
+
                   <button
                     className="submit-presc-btn"
                     onClick={() => setActiveTab("addPatient")}
@@ -1081,7 +1579,7 @@ export const AdminDashboard: React.FC = () => {
 
                   <input
                     type="text"
-                    placeholder="Search patient by name, contact, blood group..."
+                    placeholder="Search patient by name, username, email..."
                     value={patientSearchQuery}
                     onChange={(e) => setPatientSearchQuery(e.target.value)}
                     className="table-search-input"
@@ -1090,56 +1588,196 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {isLoadingPatients ? (
+              {patientViewMode === "users" ? (
+                isLoadingPatientsUsers ? (
+                  <div className="table-loading-container">
+                    Loading patients directory...
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Patient Name</th>
+                          <th>Username</th>
+                          <th>Email</th>
+                          <th>Role</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPatientUsers.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="empty-state">
+                              No patients found in directory.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredPatientUsers.map((pat) => (
+                            <tr key={pat.id}>
+                              <td><strong>#{pat.id}</strong></td>
+                              <td><strong>{pat.name}</strong></td>
+                              <td><code>{pat.username}</code></td>
+                              <td>{pat.email}</td>
+                              <td>
+                                <span className="pill-tag role-patient">
+                                  {pat.role?.toUpperCase() || "PATIENT"}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ display: "flex", gap: "8px" }}>
+                                  <button
+                                    className="btn-change-username"
+                                    onClick={() => handleOpenChangeUsernameModal(pat.username, pat.name)}
+                                    title="Change Username"
+                                  >
+                                    ✏️ Change Username
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : (
+                isLoadingPatientProfiles ? (
+                  <div className="table-loading-container">
+                    Loading patient profiles...
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Pat ID</th>
+                          <th>User ID</th>
+                          <th>Patient Name</th>
+                          <th>Age</th>
+                          <th>Gender</th>
+                          <th>Blood Group</th>
+                          <th>Contact</th>
+                          <th>Address</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPatientProfiles.length === 0 ? (
+                          <tr>
+                            <td colSpan={9} className="empty-state">
+                              No patient clinical profiles found in Database.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredPatientProfiles.map((pat) => (
+                            <tr key={pat.id}>
+                              <td><strong>#PAT-{pat.id}</strong></td>
+                              <td>#{pat.user_id}</td>
+                              <td><strong>{pat.patient_name}</strong></td>
+                              <td>{pat.age} Yrs</td>
+                              <td>{pat.gender}</td>
+                              <td>
+                                <span className="pill-tag role-patient">
+                                  {pat.blood_group}
+                                </span>
+                              </td>
+                              <td><code>{pat.contact_number}</code></td>
+                              <td>{pat.address}</td>
+                              <td>
+                                <button
+                                  className="edit-btn"
+                                  onClick={() => handleStartEditPatient(pat)}
+                                  title="Edit Clinical Details"
+                                >
+                                  ✏️ Edit
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              )}
+            </section>
+          )}
+
+          {/* TAB 3: Receptionists Directory (GET /api/v1/users/receptionists) */}
+          {activeTab === "receptionists" && (
+            <section className="dashboard-section">
+              <div className="section-header">
+                <div>
+                  <h3>🏨 Receptionists Directory</h3>
+                  <div className="tab-account-badge" style={{ marginBottom: "6px" }}>
+                    🛡️ Admin Session: <strong>@{effectiveUsername || "admin"}</strong>
+                  </div>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#64748b" }}>
+                    Directory of hospital front desk and receptionist staff.
+                  </p>
+                </div>
+
+                <div className="filter-controls">
+                  <input
+                    type="text"
+                    placeholder="Search receptionist by name, username, email..."
+                    value={receptionistSearchQuery}
+                    onChange={(e) => setReceptionistSearchQuery(e.target.value)}
+                    className="table-search-input"
+                    style={{ width: "280px" }}
+                  />
+                </div>
+              </div>
+
+              {isLoadingReceptionists ? (
                 <div className="table-loading-container">
-                  Loading Patient profiles from API...
+                  Loading receptionists directory...
                 </div>
               ) : (
                 <div className="table-responsive">
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Patient ID</th>
-                        <th>User ID</th>
-                        <th>Patient Name</th>
-                        <th>Age</th>
-                        <th>Gender</th>
-                        <th>Blood Group</th>
-                        <th>Contact Number</th>
-                        <th>Address</th>
-                        <th>Action</th>
+                        <th>ID</th>
+                        <th>Staff Name</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredPatients.length === 0 ? (
+                      {filteredReceptionists.length === 0 ? (
                         <tr>
-                          <td colSpan={9} className="empty-state">
-                            No patient profiles found in Database.
+                          <td colSpan={6} className="empty-state">
+                            No receptionists found in directory.
                           </td>
                         </tr>
                       ) : (
-                        filteredPatients.map((pat) => (
-                          <tr key={pat.id}>
-                            <td><strong>#PAT-{pat.id}</strong></td>
-                            <td>#{pat.user_id}</td>
-                            <td><strong>{pat.patient_name}</strong></td>
-                            <td>{pat.age} Yrs</td>
-                            <td>{pat.gender}</td>
+                        filteredReceptionists.map((rec) => (
+                          <tr key={rec.id}>
+                            <td><strong>#{rec.id}</strong></td>
+                            <td><strong>{rec.name}</strong></td>
+                            <td><code>{rec.username}</code></td>
+                            <td>{rec.email}</td>
                             <td>
-                              <span className="pill-tag role-patient">
-                                {pat.blood_group}
+                              <span className="pill-tag role-receptionist">
+                                {rec.role?.toUpperCase() || "RECEPTIONIST"}
                               </span>
                             </td>
-                            <td><code>{pat.contact_number}</code></td>
-                            <td>{pat.address}</td>
                             <td>
-                              <button
-                                className="edit-btn"
-                                onClick={() => handleStartEditPatient(pat)}
-                                title="Edit Patient Profile Details"
-                              >
-                                ✏️ Edit
-                              </button>
+                              <div style={{ display: "flex", gap: "8px" }}>
+                                <button
+                                  className="btn-change-username"
+                                  onClick={() => handleOpenChangeUsernameModal(rec.username, rec.name)}
+                                  title="Change Username"
+                                >
+                                  ✏️ Change Username
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -1151,53 +1789,134 @@ export const AdminDashboard: React.FC = () => {
             </section>
           )}
 
-          {/* TAB 4: Doctor Entry Form (ALL COLUMNS) */}
+          {/* TAB 4: Change Username (POST /api/v1/users/changeusername) */}
+          {activeTab === "changeUsername" && (
+            <section className="dashboard-section form-section">
+              <div style={{ maxWidth: "640px" }}>
+                <h3>✏️ Change Username</h3>
+                <div className="tab-account-badge" style={{ marginBottom: "12px" }}>
+                  🛡️ Admin Session: <strong>@{effectiveUsername || "admin"}</strong>
+                </div>
+                <p style={{ fontSize: "14px", color: "#64748b", marginTop: "-4px", marginBottom: "22px" }}>
+                  Update the login username for any Doctor, Patient, Receptionist, or Administrator account.
+                </p>
+
+                <div className="change-username-card">
+                  <form onSubmit={handleChangeUsernameSubmit} className="prescription-form">
+                    <div className="form-group">
+                      <label>Select User or Enter Current Username</label>
+                      <select
+                        value={changeUserTargetUsername}
+                        onChange={(e) => setChangeUserTargetUsername(e.target.value)}
+                        disabled={isSubmittingChangeUserTab}
+                        style={{ marginBottom: "10px" }}
+                      >
+                        <option value="">-- Choose Existing User from System --</option>
+                        {allKnownUsers.map((u) => (
+                          <option key={String(u.id) + u.username} value={u.username}>
+                            {u.name ? `${u.name} (${u.username}) [${String(u.role).toUpperCase()}]` : u.username}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        type="text"
+                        placeholder="Or type current username (e.g. doctor123)"
+                        value={changeUserTargetUsername}
+                        onChange={(e) => setChangeUserTargetUsername(e.target.value)}
+                        required
+                        disabled={isSubmittingChangeUserTab}
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>New Username</label>
+                      <input
+                        type="text"
+                        placeholder="Enter new desired username (e.g. dr_rahul_123)"
+                        value={changeUserNewUsername}
+                        onChange={(e) => setChangeUserNewUsername(e.target.value)}
+                        required
+                        disabled={isSubmittingChangeUserTab}
+                      />
+                      <small style={{ color: "#64748b", display: "block", marginTop: "4px" }}>
+                        The target user will use this new username on their next login attempt.
+                      </small>
+                    </div>
+
+                    {changeUserTargetUsername && changeUserNewUsername && (
+                      <div className="username-preview-box">
+                        <span>Preview:</span>
+                        <strong>{changeUserTargetUsername}</strong>
+                        <span style={{ color: "#2563eb" }}>➔</span>
+                        <strong style={{ color: "#16a34a" }}>{changeUserNewUsername}</strong>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      className="submit-presc-btn"
+                      disabled={isSubmittingChangeUserTab}
+                      style={{ width: "100%", marginTop: "16px", padding: "12px", fontSize: "14px" }}
+                    >
+                      {isSubmittingChangeUserTab ? "Updating Username..." : "Save New Username 💾"}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* TAB 6: Doctor Entry Form */}
           {activeTab === "addDoctor" && (
             <section className="dashboard-section form-section">
-              <h3>🩺 Register & Add New Doctor Entry</h3>
-              <p style={{ marginTop: "-12px", marginBottom: "20px", fontSize: "13px", color: "#64748b" }}>
-                Creates a doctor user account and stores all doctor profile attributes in the PostgreSQL database.
+              <h3>🩺 Doctor Registration & Clinical Profile Setup</h3>
+              <div className="tab-account-badge" style={{ marginBottom: "12px" }}>
+                🛡️ Admin Session: <strong>@{effectiveUsername || "admin"}</strong>
+              </div>
+              <p style={{ fontSize: "14px", color: "#64748b", marginTop: "-4px", marginBottom: "20px" }}>
+                Add a new verified doctor to Hospital CRM with credentials and clinical attributes.
               </p>
 
               <form onSubmit={handleCreateDoctorEntry} className="prescription-form">
-                <div className="form-group">
-                  <label>Doctor Full Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Dr. Rohit Sharma"
-                    value={docName}
-                    onChange={(e) => setDocName(e.target.value)}
-                    required
-                    disabled={isSubmittingDoc}
-                  />
-                </div>
-
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Email Address</label>
+                    <label>Doctor Full Name</label>
                     <input
-                      type="email"
-                      placeholder="rohit@hospital.com"
-                      value={docEmail}
-                      onChange={(e) => setDocEmail(e.target.value)}
+                      type="text"
+                      placeholder="e.g. Dr. Rajesh Kumar"
+                      value={docName}
+                      onChange={(e) => setDocName(e.target.value)}
                       required
                       disabled={isSubmittingDoc}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Account Password</label>
+                    <label>Email Address</label>
                     <input
-                      type="password"
-                      placeholder="Enter password (default: Password123)"
-                      value={docPassword}
-                      onChange={(e) => setDocPassword(e.target.value)}
+                      type="email"
+                      placeholder="rajesh.kumar@hospital.com"
+                      value={docEmail}
+                      onChange={(e) => setDocEmail(e.target.value)}
+                      required
                       disabled={isSubmittingDoc}
                     />
                   </div>
                 </div>
 
                 <div className="form-row">
+                  <div className="form-group">
+                    <label>Initial Account Password</label>
+                    <input
+                      type="text"
+                      placeholder="Password123"
+                      value={docPassword}
+                      onChange={(e) => setDocPassword(e.target.value)}
+                      disabled={isSubmittingDoc}
+                    />
+                  </div>
+
                   <div className="form-group">
                     <label>Gender</label>
                     <select
@@ -1210,14 +1929,28 @@ export const AdminDashboard: React.FC = () => {
                       <option value="Other">Other</option>
                     </select>
                   </div>
+                </div>
 
+                <div className="form-row">
                   <div className="form-group">
                     <label>Contact Number</label>
                     <input
                       type="text"
-                      placeholder="e.g. +91 9876543210"
+                      placeholder="+91 9876543210"
                       value={docContact}
                       onChange={(e) => setDocContact(e.target.value)}
+                      disabled={isSubmittingDoc}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Specialty / Doctor Type</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Cardiologist, Neurologist, General Physician"
+                      value={docType}
+                      onChange={(e) => setDocType(e.target.value)}
+                      required
                       disabled={isSubmittingDoc}
                     />
                   </div>
@@ -1225,29 +1958,13 @@ export const AdminDashboard: React.FC = () => {
 
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Doctor Specialty / Type</label>
-                    <select
-                      value={docType}
-                      onChange={(e) => setDocType(e.target.value)}
-                      disabled={isSubmittingDoc}
-                    >
-                      <option value="General Practitioner">General Practitioner</option>
-                      <option value="cardiologist">Cardiologist</option>
-                      <option value="neurologist">Neurologist</option>
-                      <option value="dermatologist">Dermatologist</option>
-                      <option value="orthopedic">Orthopedic</option>
-                      <option value="pediatrician">Pediatrician</option>
-                      <option value="surgeon">Surgeon</option>
-                    </select>
-                  </div>
-
-                  <div className="form-group">
                     <label>Experience (Years)</label>
                     <input
                       type="number"
-                      placeholder="e.g. 8"
+                      min="0"
                       value={docExp}
                       onChange={(e) => setDocExp(e.target.value)}
+                      required
                       disabled={isSubmittingDoc}
                     />
                   </div>
@@ -1256,35 +1973,36 @@ export const AdminDashboard: React.FC = () => {
                     <label>Consultation Fee (₹)</label>
                     <input
                       type="number"
-                      placeholder="e.g. 1000"
+                      min="0"
                       value={docFee}
                       onChange={(e) => setDocFee(e.target.value)}
+                      required
                       disabled={isSubmittingDoc}
                     />
                   </div>
                 </div>
 
                 <div className="form-row">
-                  <div className="form-group" style={{ flex: 2 }}>
-                    <label>Specialties & Abilities / Skills</label>
+                  <div className="form-group">
+                    <label>Abilities / Special Skills</label>
                     <input
                       type="text"
-                      placeholder="e.g. Angioplasty, Cardiac Surgery, OPD Consultation"
+                      placeholder="e.g. Heart Surgery, ECG, ICU Care"
                       value={docAbilities}
                       onChange={(e) => setDocAbilities(e.target.value)}
                       disabled={isSubmittingDoc}
                     />
                   </div>
 
-                  <div className="form-group" style={{ flex: 1 }}>
+                  <div className="form-group">
                     <label>Availability Status</label>
                     <select
                       value={docAvailability}
                       onChange={(e) => setDocAvailability(e.target.value)}
                       disabled={isSubmittingDoc}
                     >
-                      <option value="available">AVAILABLE (🟢)</option>
-                      <option value="unavailable">UNAVAILABLE (🔴)</option>
+                      <option value="available">Available (🟢 Active for Bookings)</option>
+                      <option value="unavailable">Unavailable (🔴 On Leave)</option>
                     </select>
                   </div>
                 </div>
@@ -1293,54 +2011,47 @@ export const AdminDashboard: React.FC = () => {
                   type="submit"
                   className="submit-presc-btn"
                   disabled={isSubmittingDoc}
+                  style={{ width: "100%", marginTop: "10px" }}
                 >
-                  {isSubmittingDoc ? "Saving Doctor Entry..." : "Save Doctor Entry to DB 🩺"}
+                  {isSubmittingDoc ? "Registering & Saving Doctor..." : "Submit Doctor Entry to Database 💾"}
                 </button>
               </form>
             </section>
           )}
 
-          {/* TAB 5: Patient Entry Form (ALL COLUMNS) */}
+          {/* TAB 7: Patient Entry Form */}
           {activeTab === "addPatient" && (
             <section className="dashboard-section form-section">
-              <h3>🧑‍🦽 Register & Add New Patient Entry</h3>
-              <p style={{ marginTop: "-12px", marginBottom: "20px", fontSize: "13px", color: "#64748b" }}>
-                Creates a patient user account and stores all patient profile attributes in the PostgreSQL database.
+              <h3>🧑‍🦽 Patient Registration & Medical Profile Setup</h3>
+              <div className="tab-account-badge" style={{ marginBottom: "12px" }}>
+                🛡️ Admin Session: <strong>@{effectiveUsername || "admin"}</strong>
+              </div>
+              <p style={{ fontSize: "14px", color: "#64748b", marginTop: "-4px", marginBottom: "20px" }}>
+                Add a new patient record to Hospital CRM with demographic & contact information.
               </p>
 
               <form onSubmit={handleCreatePatientEntry} className="prescription-form">
-                <div className="form-group">
-                  <label>Patient Full Name</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Rahul Verma"
-                    value={patName}
-                    onChange={(e) => setPatName(e.target.value)}
-                    required
-                    disabled={isSubmittingPat}
-                  />
-                </div>
-
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Email Address</label>
+                    <label>Patient Full Name</label>
                     <input
-                      type="email"
-                      placeholder="rahul@example.com"
-                      value={patEmail}
-                      onChange={(e) => setPatEmail(e.target.value)}
+                      type="text"
+                      placeholder="e.g. Priya Sharma"
+                      value={patName}
+                      onChange={(e) => setPatName(e.target.value)}
                       required
                       disabled={isSubmittingPat}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Account Password</label>
+                    <label>Email Address</label>
                     <input
-                      type="password"
-                      placeholder="Enter password (default: Password123)"
-                      value={patPassword}
-                      onChange={(e) => setPatPassword(e.target.value)}
+                      type="email"
+                      placeholder="priya.sharma@example.com"
+                      value={patEmail}
+                      onChange={(e) => setPatEmail(e.target.value)}
+                      required
                       disabled={isSubmittingPat}
                     />
                   </div>
@@ -1348,16 +2059,31 @@ export const AdminDashboard: React.FC = () => {
 
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Age (Years)</label>
+                    <label>Initial Account Password</label>
                     <input
-                      type="number"
-                      placeholder="e.g. 34"
-                      value={patAge}
-                      onChange={(e) => setPatAge(e.target.value)}
+                      type="text"
+                      placeholder="Password123"
+                      value={patPassword}
+                      onChange={(e) => setPatPassword(e.target.value)}
                       disabled={isSubmittingPat}
                     />
                   </div>
 
+                  <div className="form-group">
+                    <label>Age (Years)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="120"
+                      value={patAge}
+                      onChange={(e) => setPatAge(e.target.value)}
+                      required
+                      disabled={isSubmittingPat}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
                   <div className="form-group">
                     <label>Gender</label>
                     <select
@@ -1392,10 +2118,10 @@ export const AdminDashboard: React.FC = () => {
 
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Contact Number</label>
+                    <label>Contact Phone Number</label>
                     <input
                       type="text"
-                      placeholder="e.g. +91 9876543210"
+                      placeholder="+91 9123456780"
                       value={patContact}
                       onChange={(e) => setPatContact(e.target.value)}
                       disabled={isSubmittingPat}
@@ -1406,7 +2132,7 @@ export const AdminDashboard: React.FC = () => {
                     <label>Residential Address</label>
                     <input
                       type="text"
-                      placeholder="e.g. Sector 62, Noida, UP"
+                      placeholder="e.g. 102 Green Park, New Delhi"
                       value={patAddress}
                       onChange={(e) => setPatAddress(e.target.value)}
                       disabled={isSubmittingPat}
@@ -1418,22 +2144,25 @@ export const AdminDashboard: React.FC = () => {
                   type="submit"
                   className="submit-presc-btn"
                   disabled={isSubmittingPat}
+                  style={{ width: "100%", marginTop: "10px" }}
                 >
-                  {isSubmittingPat ? "Saving Patient Entry..." : "Save Patient Entry to DB 🧑‍🤝‍🧑"}
+                  {isSubmittingPat ? "Registering & Saving Patient..." : "Submit Patient Entry to Database 💾"}
                 </button>
               </form>
             </section>
           )}
 
-          {/* TAB 6: Register & Edit System User (WITH 3 RADIO BUTTON MODES) */}
+          {/* TAB 8: Register & Edit System User */}
           {activeTab === "addUser" && (
             <section className="dashboard-section form-section">
               <h3>⚙️ Register & Edit System User</h3>
-              <p style={{ marginTop: "-12px", marginBottom: "20px", fontSize: "13px", color: "#64748b" }}>
-                Select an action mode below to register a new user, edit username & profile details, or modify password & role.
+              <div className="tab-account-badge" style={{ marginBottom: "12px" }}>
+                🛡️ Admin Session: <strong>@{effectiveUsername || "admin"}</strong>
+              </div>
+              <p style={{ fontSize: "14px", color: "#64748b", marginTop: "-4px", marginBottom: "20px" }}>
+                Select an operation below to register a new user, update username, or modify passwords.
               </p>
 
-              {/* 3 RADIO BUTTON MODE SELECTOR */}
               <div className="user-form-mode-selector">
                 <label className={`radio-label ${userFormMode === "register" ? "active" : ""}`}>
                   <input
@@ -1454,7 +2183,7 @@ export const AdminDashboard: React.FC = () => {
                     checked={userFormMode === "editUsername"}
                     onChange={() => setUserFormMode("editUsername")}
                   />
-                  <span>2️⃣ Edit Username & Profile</span>
+                  <span>2️⃣ Change Username</span>
                 </label>
 
                 <label className={`radio-label ${userFormMode === "editPassword" ? "active" : ""}`}>
@@ -1469,33 +2198,34 @@ export const AdminDashboard: React.FC = () => {
                 </label>
               </div>
 
-              {userCreatedMsg && (
-                <div className="alert-banner success-alert">
-                  ✅ {userCreatedMsg}
-                </div>
-              )}
-
               {/* MODE 1: REGISTER NEW USER */}
               {userFormMode === "register" && (
-                <form onSubmit={handleCreateUser} className="prescription-form">
-                  <div className="form-group">
-                    <label>Full Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Dr. Rohit Sharma"
-                      value={newUserName}
-                      onChange={(e) => setNewUserName(e.target.value)}
-                      required
-                      disabled={isSubmittingNewUser}
-                    />
-                  </div>
+                <>
+                  {userCreatedMsg && (
+                    <div className="alert-banner success" style={{ marginBottom: "15px" }}>
+                      <span>✓</span>
+                      <div>{userCreatedMsg}</div>
+                    </div>
+                  )}
 
-                  <div className="form-row">
+                  <form onSubmit={handleCreateUser} className="prescription-form">
+                    <div className="form-group">
+                      <label>Full Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Dr. Jane Doe or Reception Desk 1"
+                        value={newUserName}
+                        onChange={(e) => setNewUserName(e.target.value)}
+                        required
+                        disabled={isSubmittingNewUser}
+                      />
+                    </div>
+
                     <div className="form-group">
                       <label>Email Address</label>
                       <input
                         type="email"
-                        placeholder="rohit@example.com"
+                        placeholder="jane.doe@hospital.com"
                         value={newUserEmail}
                         onChange={(e) => setNewUserEmail(e.target.value)}
                         required
@@ -1503,51 +2233,74 @@ export const AdminDashboard: React.FC = () => {
                       />
                     </div>
 
-                    <div className="form-group">
-                      <label>Password</label>
-                      <input
-                        type="password"
-                        placeholder="Enter password (e.g. Password123)"
-                        value={newUserPassword}
-                        onChange={(e) => setNewUserPassword(e.target.value)}
-                        disabled={isSubmittingNewUser}
-                      />
-                    </div>
-                  </div>
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label>Initial Password</label>
+                        <input
+                          type="text"
+                          placeholder="Password123"
+                          value={newUserPassword}
+                          onChange={(e) => setNewUserPassword(e.target.value)}
+                          disabled={isSubmittingNewUser}
+                        />
+                      </div>
 
-                  <div className="form-group">
-                    <label>Assign Account Role</label>
-                    <select
-                      value={newUserRole}
-                      onChange={(e) => setNewUserRole(e.target.value as UserRole)}
-                      required
+                      <div className="form-group">
+                        <label>Assign Role</label>
+                        <select
+                          value={newUserRole}
+                          onChange={(e) => setNewUserRole(e.target.value as UserRole)}
+                          disabled={isSubmittingNewUser}
+                        >
+                          <option value="doctor">Doctor</option>
+                          <option value="patient">Patient</option>
+                          <option value="receptionist">Receptionist</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="submit-presc-btn"
                       disabled={isSubmittingNewUser}
                     >
-                      <option value="doctor">Doctor</option>
-                      <option value="patient">Patient</option>
-                      <option value="receptionist">Receptionist</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="submit-presc-btn"
-                    disabled={isSubmittingNewUser}
-                  >
-                    {isSubmittingNewUser ? "Registering User..." : "Register User 🚀"}
-                  </button>
-                </form>
+                      {isSubmittingNewUser ? "Creating User in Database..." : "Register User in DB 🚀"}
+                    </button>
+                  </form>
+                </>
               )}
 
-              {/* MODE 2: EDIT USERNAME & PROFILE */}
+              {/* MODE 2: CHANGE USERNAME */}
               {userFormMode === "editUsername" && (
                 <form onSubmit={handleUpdateUserProfile} className="prescription-form">
                   <div className="form-group">
-                    <label>Old Username (Target Account)</label>
+                    <label>Current Username (Target Account)</label>
+                    <select
+                      value={editOldUsername}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditOldUsername(val);
+                        const found = usersList.find(u => u.username === val || u.email === val);
+                        if (found) {
+                          setEditNewName(found.name);
+                          setEditNewEmail(found.email);
+                          setEditNewUsername(found.username);
+                        }
+                      }}
+                      style={{ marginBottom: "10px" }}
+                    >
+                      <option value="">-- Or choose from existing users --</option>
+                      {allKnownUsers.map((u) => (
+                        <option key={String(u.id) + u.username} value={u.username}>
+                          {u.name} ({u.username}) [{String(u.role).toUpperCase()}]
+                        </option>
+                      ))}
+                    </select>
+
                     <input
                       type="text"
-                      placeholder="Enter existing username (e.g. rohit_sharma)"
+                      placeholder="Enter existing username (e.g. doctor123)"
                       value={editOldUsername}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -1564,37 +2317,11 @@ export const AdminDashboard: React.FC = () => {
                     />
                   </div>
 
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>New Full Name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Dr. Rohit Sharma Updated"
-                        value={editNewName}
-                        onChange={(e) => setEditNewName(e.target.value)}
-                        required
-                        disabled={isSubmittingUsernameEdit}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label>New Email Address</label>
-                      <input
-                        type="email"
-                        placeholder="e.g. newrohit@example.com"
-                        value={editNewEmail}
-                        onChange={(e) => setEditNewEmail(e.target.value)}
-                        required
-                        disabled={isSubmittingUsernameEdit}
-                      />
-                    </div>
-                  </div>
-
                   <div className="form-group">
                     <label>New Username</label>
                     <input
                       type="text"
-                      placeholder="e.g. rohit_sharma_v2"
+                      placeholder="e.g. dr_rahul_updated"
                       value={editNewUsername}
                       onChange={(e) => setEditNewUsername(e.target.value)}
                       required
@@ -1607,7 +2334,7 @@ export const AdminDashboard: React.FC = () => {
                     className="submit-presc-btn"
                     disabled={isSubmittingUsernameEdit}
                   >
-                    {isSubmittingUsernameEdit ? "Updating Profile..." : "Update Profile & Username 💾"}
+                    {isSubmittingUsernameEdit ? "Updating Username..." : "Save New Username 💾"}
                   </button>
                 </form>
               )}
@@ -1638,43 +2365,41 @@ export const AdminDashboard: React.FC = () => {
 
                   <div className="form-row">
                     <div className="form-group">
-                      <label>New Password</label>
-                      <input
-                        type="password"
-                        placeholder="Enter new password (e.g. NewPass123)"
-                        value={editNewPasswordVal}
-                        onChange={(e) => setEditNewPasswordVal(e.target.value)}
-                        disabled={isSubmittingPassEdit}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label>Assign Account Role</label>
+                      <label>New Role</label>
                       <select
                         value={editPassRole}
-                        onChange={(e) => setEditPassRole(e.target.value as UserRole)}
-                        required
+                        onChange={(e) => setEditPassRole(e.target.value)}
                         disabled={isSubmittingPassEdit}
                       >
                         <option value="doctor">Doctor</option>
                         <option value="patient">Patient</option>
                         <option value="receptionist">Receptionist</option>
                         <option value="admin">Admin</option>
-                        <option value="recipient">Recipient</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Account Status</label>
+                      <select
+                        value={editPassStatus}
+                        onChange={(e) => setEditPassStatus(e.target.value)}
+                        disabled={isSubmittingPassEdit}
+                      >
+                        <option value="activate">ACTIVATE (Active)</option>
+                        <option value="disable">DISABLE (Suspended)</option>
                       </select>
                     </div>
                   </div>
 
                   <div className="form-group">
-                    <label>Account Status</label>
-                    <select
-                      value={editPassStatus}
-                      onChange={(e) => setEditPassStatus(e.target.value)}
+                    <label>Set New Password (Optional)</label>
+                    <input
+                      type="password"
+                      placeholder="Enter new secure password"
+                      value={editNewPasswordVal}
+                      onChange={(e) => setEditNewPasswordVal(e.target.value)}
                       disabled={isSubmittingPassEdit}
-                    >
-                      <option value="activate">Active / Activate (🟢)</option>
-                      <option value="disable">Disabled / Blocked (🔴)</option>
-                    </select>
+                    />
                   </div>
 
                   <button
@@ -1682,17 +2407,125 @@ export const AdminDashboard: React.FC = () => {
                     className="submit-presc-btn"
                     disabled={isSubmittingPassEdit}
                   >
-                    {isSubmittingPassEdit ? "Updating Credentials..." : "Update Password & Role 🔐"}
+                    {isSubmittingPassEdit ? "Updating Role & Access..." : "Update Role & Access 🔐"}
                   </button>
                 </form>
               )}
             </section>
           )}
-
         </main>
       </div>
 
-      {/* EDIT DOCTOR MODAL (ALL DOCTOR COLUMNS) */}
+      {/* QUICK CHANGE USERNAME MODAL (ACCESSIBLE FROM ALL TABLES & TOP HEADER) */}
+      {usernameModalOpen && (
+        <div
+          className="modal-backdrop"
+          onClick={() => !isSubmittingModalUsername && setUsernameModalOpen(false)}
+        >
+          <div
+            className="modal-container"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "480px" }}
+          >
+            <div className="modal-header">
+              <h3>✏️ Change Username</h3>
+              <button
+                className="close-modal-btn"
+                onClick={() => setUsernameModalOpen(false)}
+                disabled={isSubmittingModalUsername}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: "14px", color: "#64748b", marginTop: 0, marginBottom: "16px" }}>
+              Update account username {modalTargetName ? <>for <strong>{modalTargetName}</strong>.</> : "for target account."}
+            </p>
+
+            <form onSubmit={handleModalChangeUsernameSubmit}>
+              <div className="form-group" style={{ marginBottom: "14px" }}>
+                <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>
+                  Target User (Current Username)
+                </label>
+                {allKnownUsers.length > 0 && (
+                  <select
+                    value={modalOldUsername}
+                    onChange={(e) => {
+                      setModalOldUsername(e.target.value);
+                      const found = allKnownUsers.find((u) => u.username === e.target.value);
+                      if (found?.name) setModalTargetName(found.name);
+                    }}
+                    style={{ width: "100%", padding: "9px 10px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "8px", fontSize: "13px" }}
+                    disabled={isSubmittingModalUsername}
+                  >
+                    <option value="">-- Choose User from List (Optional) --</option>
+                    {allKnownUsers.map((u) => (
+                      <option key={String(u.id) + u.username} value={u.username}>
+                        {u.name ? `${u.name} (${u.username}) [${String(u.role).toUpperCase()}]` : u.username}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <input
+                  type="text"
+                  placeholder="Enter current username (e.g. doctor123)"
+                  value={modalOldUsername}
+                  onChange={(e) => setModalOldUsername(e.target.value)}
+                  required
+                  disabled={isSubmittingModalUsername}
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: "18px" }}>
+                <label style={{ display: "block", marginBottom: "6px", fontWeight: 600, fontSize: "13px" }}>
+                  New Username
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter new username (e.g. rahul_123)"
+                  value={modalNewUsername}
+                  onChange={(e) => setModalNewUsername(e.target.value)}
+                  required
+                  disabled={isSubmittingModalUsername}
+                  autoFocus
+                  style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1" }}
+                />
+              </div>
+
+              {modalOldUsername && modalNewUsername && (
+                <div className="username-preview-box" style={{ marginTop: 0, marginBottom: "16px", padding: "10px 14px", fontSize: "13px" }}>
+                  <span>Change:</span>
+                  <strong>{modalOldUsername}</strong>
+                  <span style={{ color: "#2563eb" }}>➔</span>
+                  <strong style={{ color: "#16a34a" }}>{modalNewUsername}</strong>
+                </div>
+              )}
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn-cancel"
+                  onClick={() => setUsernameModalOpen(false)}
+                  disabled={isSubmittingModalUsername}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="submit-presc-btn"
+                  disabled={isSubmittingModalUsername}
+                >
+                  {isSubmittingModalUsername ? "Updating..." : "Save New Username 💾"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT DOCTOR PROFILE MODAL */}
       {editingDoctor && (
         <div className="modal-backdrop">
           <div className="modal-container">
@@ -1801,7 +2634,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* EDIT PATIENT MODAL (ALL PATIENT COLUMNS) */}
+      {/* EDIT PATIENT PROFILE MODAL */}
       {editingPatient && (
         <div className="modal-backdrop">
           <div className="modal-container">

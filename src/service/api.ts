@@ -3,19 +3,14 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 
-// API Base URL — must be set in .env
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
-
-if (!BASE_URL) {
-  throw new Error(
-    "[api.ts] VITE_API_BASE_URL is not defined. Please set it in your .env file.\n" +
-    "Example: VITE_API_BASE_URL=http://localhost:8080"
-  );
-}
+// API Base URL — configured from .env or production backend URL
+const rawBaseUrl =
+  import.meta.env.VITE_API_BASE_URL || "https://doctor-crm-backend.vercel.app";
+const BASE_URL = rawBaseUrl.replace(/\/+$/, "");
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000,
+  timeout: 15000,
   headers: {
     "Content-Type": "application/json",
   },

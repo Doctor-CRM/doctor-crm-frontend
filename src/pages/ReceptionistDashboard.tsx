@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
 import { adminService } from "../service/adminService";
 import { getApiErrorMessage } from "../service/api";
+import { getEffectiveUsername } from "../utils/roleUtils";
 import "./ReceptionistDashboard.css";
 import logoImg from "../assets/Hospital CRM Healthcare Logo (1).png";
 import type { DoctorProfile } from "../types/admin";
@@ -21,6 +22,7 @@ interface OPDToken {
 export const ReceptionistDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
+  const effectiveUsername = getEffectiveUsername(user);
   const [activeTab, setActiveTab] = useState<"tokens" | "newWalkIn" | "doctors">("tokens");
 
   // Dynamic API Doctors List
@@ -109,9 +111,15 @@ export const ReceptionistDashboard: React.FC = () => {
             🖥️ Counter: <strong>Desk 01 (Main Lobby)</strong>
           </div>
 
-          <div className="profile-info">
-            <span className="profile-name">{user?.name || user?.username || "Reception Staff"}</span>
-            <span className="profile-role">Receptionist</span>
+          <div className="logged-in-profile-badge">
+            <div className="profile-badge-avatar reception">
+              {effectiveUsername ? effectiveUsername.charAt(0).toUpperCase() : "R"}
+            </div>
+            <div className="profile-badge-text">
+              <span className="profile-badge-label">Logged In</span>
+              <span className="profile-badge-username">@{effectiveUsername || "reception"}</span>
+            </div>
+            <span className="profile-badge-role reception">Receptionist</span>
           </div>
 
           <button onClick={handleLogout} className="dashboard-logout-btn">
@@ -159,6 +167,16 @@ export const ReceptionistDashboard: React.FC = () => {
               <strong>{tokensList.filter((t) => t.priority === "Urgent").length}</strong>
             </div>
           </div>
+
+          <div className="sidebar-user-footer">
+            <div className="sidebar-user-avatar reception">
+              {effectiveUsername ? effectiveUsername.charAt(0).toUpperCase() : "R"}
+            </div>
+            <div className="sidebar-user-info">
+              <span className="sidebar-user-label">Logged In Receptionist</span>
+              <span className="sidebar-user-username">@{effectiveUsername || "reception"}</span>
+            </div>
+          </div>
         </aside>
 
         {/* Main Workspace Content */}
@@ -194,7 +212,12 @@ export const ReceptionistDashboard: React.FC = () => {
           {activeTab === "tokens" && (
             <section className="dashboard-section">
               <div className="section-header">
-                <h3>Live OPD Queue Management</h3>
+                <div>
+                  <h3>Live OPD Queue Management</h3>
+                  <div className="tab-account-badge">
+                    💁‍♀️ Desk Operator: <strong>@{effectiveUsername || "reception"}</strong>
+                  </div>
+                </div>
                 <button
                   className="submit-presc-btn"
                   onClick={() => setActiveTab("newWalkIn")}
@@ -275,7 +298,12 @@ export const ReceptionistDashboard: React.FC = () => {
           {/* Tab 2: Issue Walk-in Token */}
           {activeTab === "newWalkIn" && (
             <section className="dashboard-section form-section">
-              <h3>Register Walk-in OPD Patient</h3>
+              <div>
+                <h3>Register Walk-in OPD Patient</h3>
+                <div className="tab-account-badge">
+                  🎫 Token Issued By: <strong>@{effectiveUsername || "reception"}</strong>
+                </div>
+              </div>
 
               {tokenCreatedMsg && (
                 <div className="alert-banner success-alert">
@@ -364,7 +392,12 @@ export const ReceptionistDashboard: React.FC = () => {
           {activeTab === "doctors" && (
             <section className="dashboard-section">
               <div className="section-header">
-                <h3>Doctor Duty Status (API Dynamic)</h3>
+                <div>
+                  <h3>Doctor Duty Status</h3>
+                  <div className="tab-account-badge">
+                    👨‍⚕️ Desk Operator: <strong>@{effectiveUsername || "reception"}</strong>
+                  </div>
+                </div>
               </div>
 
               {isLoadingDoctors ? (

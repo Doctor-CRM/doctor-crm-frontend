@@ -107,3 +107,29 @@ export interface HealthCheckResponse {
   db_status?: string;
   db_message?: string;
 }
+
+// User Record for Doctors, Patients, Receptionists
+export interface RoleUser {
+  id: number | string;
+  username: string;
+  name: string;
+  email: string;
+  role: string;
+  status?: string;
+  createdAt?: string;
+}
+
+export interface GetRoleUsersResponse {
+  message?: string;
+  data: RoleUser[];
+}
+
+export interface ChangeUsernamePayload {
+  username: string;
+  new_username: string;
+}
+
+export interface ChangeUsernameResponse {
+  message: string;
+}
+

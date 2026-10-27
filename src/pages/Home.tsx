@@ -1,12 +1,13 @@
 import { Link, useNavigate } from "react-router-dom";
 import "./Home.css";
 import { useAuthStore } from "../store/useAuthStore";
-import { getRoleDashboardPath, formatRoleName } from "../utils/roleUtils";
+import { getRoleDashboardPath, formatRoleName, getEffectiveUsername } from "../utils/roleUtils";
 import logoImg from "../assets/Hospital CRM Healthcare Logo (1).png";
 
 function Home() {
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuthStore();
+  const effectiveUsername = getEffectiveUsername(user);
 
   const handleLogout = () => {
     logout();
@@ -35,7 +36,8 @@ function Home() {
             <>
               <div className="user-pill">
                 <span className="user-dot">●</span>
-                {user?.name || user?.username || "User"}
+                <span style={{ fontSize: "12px", color: "var(--text-muted)", marginRight: "2px" }}>Logged in:</span>
+                <strong style={{ fontFamily: "monospace", color: "var(--text-dark)" }}>@{effectiveUsername || "user"}</strong>
                 <span className="user-role-badge">{formatRoleName(user?.role)}</span>
               </div>
               <button onClick={() => navigate(userDashboardPath)} className="btn-nav-primary">
@@ -57,7 +59,13 @@ function Home() {
       {/* Hero Section */}
       <main className="hero-section">
         <div className="hero-content">
-          <div className="hero-badge">🏥 Trusted Healthcare Management</div>
+          {isAuthenticated ? (
+            <div className="hero-badge">
+              👋 Active Session: <strong>@{effectiveUsername}</strong> ({formatRoleName(user?.role)})
+            </div>
+          ) : (
+            <div className="hero-badge">🏥 Trusted Healthcare Management</div>
+          )}
           <h1 className="hero-title">
             Smart Healthcare,<br />
             <span className="hero-title-accent">Simplified.</span>

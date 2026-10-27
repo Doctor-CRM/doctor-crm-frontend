@@ -7,6 +7,7 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   setAuth: (token: string, user?: User) => void;
+  updateUsername: (newUsername: string) => void;
   logout: () => void;
 }
 
@@ -18,14 +19,27 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       setAuth: (token: string, user?: User) => {
         localStorage.setItem("auth_token", token);
+        if (user?.username) {
+          localStorage.setItem("logged_in_username", user.username);
+        }
         set({
           token,
           user: user || null,
           isAuthenticated: true,
         });
       },
+      updateUsername: (newUsername: string) => {
+        const trimmed = newUsername.trim();
+        localStorage.setItem("logged_in_username", trimmed);
+        set((state) => ({
+          user: state.user
+            ? { ...state.user, username: trimmed }
+            : { username: trimmed },
+        }));
+      },
       logout: () => {
         localStorage.removeItem("auth_token");
+        localStorage.removeItem("logged_in_username");
         set({
           token: null,
           user: null,
